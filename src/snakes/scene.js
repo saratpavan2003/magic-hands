@@ -6,12 +6,17 @@ import { LADDERS, SNAKES, cell } from './game.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
-// The open book lies on a "table" in front of you; the bookcase stands farther back.
-export const TABLE = V(0, -0.62, -0.85);
+// The open book sits on a "table" in front of you, opened like a laptop: the near half lies flat
+// (with the dice) and the far half stands up with the board on it. The bookcase stands farther back.
+export const TABLE = V(0, -0.7, -1.0);
 export const SHELF = V(0, -0.45, -1.8);
-const HALF_W = 0.42, BOOK_H = 0.6, COVER = 0.008, PAGES = 0.022, T = COVER + PAGES; // one half of the book
+const HALF_W = 0.68, BOOK_H = 0.62, COVER = 0.008, PAGES = 0.022, T = COVER + PAGES; // one half of the book
 const BOARD = 0.56, SQ = BOARD / 10;              // the pop-up board and one square
-const BOOK_ON_SHELF = 0.45;                       // the book is smaller on the shelf, and grows as it flies out
+const BOARD_UP = 0.09;                            // gap between the spine and the bottom of the board (pieces wait there)
+const BOOK_ON_SHELF = 0.4;                        // the book is smaller on the shelf, and grows as it flies out
+const STAND = -Math.PI / 2;                       // hinge angle with the board half standing straight up
+const BOARD_VIEW = V(0, TABLE.y + 0.3, TABLE.z - 0.1); // what to look at when the book is open
+const ON_TABLE = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), -Math.PI / 2); // spine running left-right, far half behind
 const DIE = 0.045;
 const LIFT = 0.02;                                // how high the pop-up board stands above the pages
 
@@ -130,18 +135,67 @@ export function squareXZ(n) {
   return { x: (col - 4.5) * SQ, z: (4.5 - row) * SQ };
 }
 
-/** Snake shape: a wiggly curve from its head (start square) to its tail (end square). */
-function snakeCurve(from, to, seed) {
+/**
+ * A snake's resting shape: points from its head (start square) to its tail (end square), plus the
+ * sideways direction it wiggles in. The head is lifted off the board, like a cobra.
+ */
+function snakeBase(from, to, seed) {
   const a = squareXZ(from), b = squareXZ(to);
   const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
-  const nx = -dz / len, nz = dx / len;
+  const side = { x: -dz / len, z: dx / len };
   const pts = [];
-  const N = 8;
+  const N = 10;
   for (let i = 0; i <= N; i++) {
-    const t = i / N, w = Math.sin(t * Math.PI * (2 + (seed % 2)) + seed) * SQ * 0.45 * Math.sin(t * Math.PI);
-    pts.push(V(a.x + dx * t + nx * w, 0.006 + Math.sin(t * Math.PI) * 0.012, a.z + dz * t + nz * w));
+    const t = i / N, w = Math.sin(t * Math.PI * (2 + (seed % 2)) + seed) * SQ * 0.35 * Math.sin(t * Math.PI);
+    pts.push(V(a.x + dx * t + side.x * w, 0.006 + Math.pow(1 - t, 3) * 0.02, a.z + dz * t + side.z * w));
   }
-  return new THREE.CatmullRomCurve3(pts);
+  return { pts, side };
+}
+
+const SNAKE_SEG = 60, SNAKE_RADIAL = 8, SNAKE_R = 0.007;
+
+/** An empty tube mesh for a snake body; snakeShape() bends it into place every frame. */
+function snakeGeometry() {
+  const n = (SNAKE_SEG + 1) * (SNAKE_RADIAL + 1);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  const uv = new Float32Array(n * 2), idx = [];
+  for (let i = 0; i <= SNAKE_SEG; i++) for (let j = 0; j <= SNAKE_RADIAL; j++) {
+    const k = i * (SNAKE_RADIAL + 1) + j;
+    uv[k * 2] = i / SNAKE_SEG; uv[k * 2 + 1] = j / SNAKE_RADIAL;
+    if (i < SNAKE_SEG && j < SNAKE_RADIAL) {
+      const a = k, b = k + SNAKE_RADIAL + 1, c = b + 1, d = a + 1;
+      idx.push(a, b, d, b, c, d);
+    }
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  return geo;
+}
+
+const _P = new THREE.Vector3(), _T = new THREE.Vector3(), _N = new THREE.Vector3(), _B = new THREE.Vector3(), _UP = new THREE.Vector3(0, 1, 0);
+/** Bends the tube along the curve: thick at the head, thin at the tail. */
+function snakeShape(geo, curve) {
+  const pos = geo.attributes.position.array, nor = geo.attributes.normal.array;
+  for (let i = 0; i <= SNAKE_SEG; i++) {
+    const t = i / SNAKE_SEG;
+    curve.getPoint(t, _P); curve.getTangent(t, _T);
+    _N.crossVectors(_T, _UP);
+    if (_N.lengthSq() < 1e-8) _N.set(1, 0, 0);
+    _N.normalize();
+    _B.crossVectors(_N, _T).normalize();
+    const r = SNAKE_R * (1.35 - t * 1.1);
+    for (let j = 0; j <= SNAKE_RADIAL; j++) {
+      const a = (j / SNAKE_RADIAL) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+      const k = (i * (SNAKE_RADIAL + 1) + j) * 3;
+      const nx = c * _N.x + s * _B.x, ny = c * _N.y + s * _B.y, nz = c * _N.z + s * _B.z;
+      nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
+      pos[k] = _P.x + nx * r; pos[k + 1] = _P.y + ny * r; pos[k + 2] = _P.z + nz * r;
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.normal.needsUpdate = true;
 }
 
 /** Ladder shape: an arch from its bottom square to its top square. side: -1 left rail, 1 right rail, 0 middle. */
@@ -157,29 +211,19 @@ function ladderCurve(from, to, side = 0) {
 function makeSnake(from, to, i) {
   const COLORS = [['#2ecc71', '#1b8a4b'], ['#ff8a3d', '#c4511b'], ['#8c6bff', '#5a3cc9'], ['#ff6b9d', '#c43d6d'], ['#3d8bff', '#1f5bb8'], ['#ffcc29', '#c49a00']];
   const [c1, c2] = COLORS[i % COLORS.length];
-  const curve = snakeCurve(from, to, i);
-  const seg = 80, radial = 10;
-  const geo = new THREE.TubeGeometry(curve, seg, 0.007, radial, false);
-  // Thick at the head, thin at the tail.
-  const pos = geo.attributes.position, p = new THREE.Vector3(), c = new THREE.Vector3();
-  for (let k = 0; k < pos.count; k++) {
-    const t = Math.floor(k / (radial + 1)) / seg;
-    curve.getPointAt(t, c);
-    p.fromBufferAttribute(pos, k).sub(c).multiplyScalar(1.35 - t * 1.05).add(c);
-    pos.setXYZ(k, p.x, p.y, p.z);
-  }
-  geo.computeVertexNormals();
+  const base = snakeBase(from, to, i);
+  const curve = new THREE.CatmullRomCurve3(base.pts.map(p => p.clone()));
+  const geo = snakeGeometry();
+  snakeShape(geo, curve);
   const map = stripeTexture(c1, c2);
   map.repeat.set(6, 1);
   const g = new THREE.Group();
   const body = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, roughness: 0.5 }));
   body.castShadow = true;
+  body.frustumCulled = false; // its shape changes every frame
   g.add(body);
-  // Head with eyes and a tongue, looking away from the body.
-  const h0 = curve.getPointAt(0), dir = curve.getTangentAt(0).negate();
+  // Head with eyes and a tongue (the head looks along its local +z).
   const head = new THREE.Group();
-  head.position.copy(h0).add(V(0, 0.004, 0));
-  head.lookAt(head.position.clone().add(dir));
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.013, 16, 12), new THREE.MeshStandardMaterial({ color: c1, roughness: 0.5 }));
   skull.scale.set(1, 0.75, 1.35);
   skull.castShadow = true;
@@ -196,8 +240,36 @@ function makeSnake(from, to, i) {
   tongue.position.set(0, -0.002, 0.021);
   head.add(tongue);
   g.add(head);
-  g.userData = { curve, tongue };
+  g.userData = { curve, base, geo, head, tongue, seed: i, bite: -1e9 };
   return g;
+}
+
+const _F = new THREE.Vector3(), _R = new THREE.Vector3(), _M = new THREE.Matrix4();
+/**
+ * Moves a snake for this moment: a wave slides down its body, the head sways and bobs, the tongue
+ * flicks. bite: seconds since it last bit someone (the head lunges forward for a moment).
+ */
+function slither(snake, time) {
+  const { curve, base, geo, head, tongue, seed } = snake.userData;
+  const bite = time - snake.userData.bite;
+  const lunge = bite < 0.6 ? Math.sin((bite / 0.6) * Math.PI) : 0;
+  base.pts.forEach((p, i) => {
+    const t = i / (base.pts.length - 1);
+    const wave = Math.sin(t * Math.PI * 3 - time * 3.2 + seed) * SQ * 0.18 * (0.3 + 0.7 * Math.sin(Math.PI * Math.min(1, t * 1.15)));
+    const q = curve.points[i];
+    q.set(p.x + base.side.x * wave, p.y + (1 - t) ** 3 * (0.006 * Math.sin(time * 2.1 + seed) + 0.03 * lunge), p.z + base.side.z * wave);
+  });
+  snakeShape(geo, curve);
+  // Head: at the front of the body, looking away from it, with the board as "up".
+  curve.getPoint(0, _P); curve.getTangent(0, _F).negate();
+  _F.y = 0; _F.normalize();
+  _R.crossVectors(_UP, _F).normalize();
+  head.quaternion.setFromRotationMatrix(_M.makeBasis(_R, _UP, _F));
+  head.rotateY(Math.sin(time * 1.7 + seed) * 0.35);
+  head.rotateX(-0.25 * lunge);
+  head.position.copy(_P).addScaledVector(_F, 0.004 + 0.015 * lunge).add(V(0, 0.004, 0));
+  head.scale.setScalar(1 + 0.35 * lunge);
+  tongue.scale.z = 0.4 + 0.6 * Math.abs(Math.sin(time * 6 + seed)) + lunge;
 }
 
 function makeLadder(from, to) {
@@ -295,7 +367,9 @@ function makeBook() {
   const right = new THREE.Group();
   const rc = new THREE.Mesh(new THREE.BoxGeometry(HALF_W, COVER, BOOK_H), coverMat);
   rc.position.set(HALF_W / 2, COVER / 2, 0);
-  const rp = new THREE.Mesh(new THREE.BoxGeometry(HALF_W - 0.012, PAGES, BOOK_H - 0.02), [pageSide, pageSide, new THREE.MeshStandardMaterial({ map: pageTexture('Roll the dice! 🎲') }), pageSide, pageSide, pageSide]);
+  const rollPage = pageTexture('Roll the dice! 🎲');
+  rollPage.center.set(0.5, 0.5); rollPage.rotation = -Math.PI / 2; // reads the right way up on the flat page
+  const rp = new THREE.Mesh(new THREE.BoxGeometry(HALF_W - 0.012, PAGES, BOOK_H - 0.02), [pageSide, pageSide, new THREE.MeshStandardMaterial({ map: rollPage }), pageSide, pageSide, pageSide]);
   rp.position.set(HALF_W / 2, COVER + PAGES / 2, 0);
   right.add(rc, rp);
 
@@ -334,7 +408,7 @@ export function createWorld(canvas) {
 
   scene.add(new THREE.HemisphereLight('#ffffff', '#b9a68a', 1.6));
   const sun = new THREE.DirectionalLight('#ffffff', 1.8);
-  sun.position.set(0.6, 1.5, 0.4);
+  sun.position.set(0.5, 1.1, 1.3); // in front of and above the standing board
   sun.target.position.copy(TABLE);
   sun.position.add(TABLE);
   sun.castShadow = true;
@@ -367,9 +441,8 @@ export function createWorld(canvas) {
   book.userData.hinge.rotation.z = -Math.PI;
   book.traverse(o => { if (o.isMesh) o.userData.kind = 'book'; });
 
-  // Board, snakes, ladders, pieces and dice live in "game", which sits on the open book.
-  const game = new THREE.Group();
-  game.position.set(0, T + 0.001, 0);
+  // The board (with its snakes, ladders and pieces) sits on the page that stands up; the dice on the flat page.
+  // In board coordinates, x runs left to right, -z runs up the board, and +y points out of it, toward you.
   const boardHolder = new THREE.Group(); // pops up out of the book
   const board = new THREE.Mesh(new THREE.BoxGeometry(BOARD, 0.006, BOARD), [pageSide(), pageSide(), new THREE.MeshStandardMaterial({ map: boardTexture(), roughness: 0.8 }), pageSide(), pageSide(), pageSide()]);
   board.position.y = -0.003;
@@ -382,8 +455,10 @@ export function createWorld(canvas) {
     fold.position.set(sx * BOARD * 0.25, -LIFT / 2 - 0.003, 0);
     boardHolder.add(fold);
   }
-  boardHolder.position.y = LIFT;
-  game.add(boardHolder);
+  boardHolder.position.set(-(BOARD_UP + BOARD / 2), LIFT, 0);
+  boardHolder.rotation.y = Math.PI / 2;
+  boardHolder.visible = false;
+  book.userData.hinge.add(boardHolder);
   const extras = new THREE.Group(); // snakes and ladders, popped up one by one
   boardHolder.add(extras);
   const snakes = Object.entries(SNAKES).map(([a, b], i) => { const s = makeSnake(+a, b, i); s.userData.from = +a; extras.add(s); return s; });
@@ -392,10 +467,9 @@ export function createWorld(canvas) {
   boardHolder.add(piecesGroup);
   let pieces = [];
   const die = makeDie();
-  die.position.set(-BOARD / 2 - 0.07, DIE / 2, BOARD / 2 - 0.06);
-  game.add(die);
-  game.visible = false;
-  book.add(game);
+  die.position.set(HALF_W * 0.45, T + DIE / 2, -0.2); // on the flat page, to the right
+  die.visible = false;
+  book.add(die);
 
   function pageSide() { return new THREE.MeshStandardMaterial({ color: '#f4ecd8', roughness: 0.9 }); }
 
@@ -408,9 +482,9 @@ export function createWorld(canvas) {
   // ---------- Pieces ----------
   /** Where a piece stands on square n; pieces sharing a square stand in its corners. */
   function spot(n, i, all) {
-    const { x, z } = n === 0 ? { x: -5.6 * SQ, z: 4.5 * SQ } : squareXZ(n);
+    if (n === 0) return V((i - 4.5) * SQ, -LIFT, BOARD / 2 + BOARD_UP / 2); // waiting on the page under the board
+    const { x, z } = squareXZ(n);
     const here = all.filter(p => p === n).length;
-    if (n === 0) return V(x, -LIFT, z - i * SQ * 0.9); // waiting on the page beside square 1
     if (here < 2) return V(x, 0, z);
     const k = all.slice(0, i).filter(p => p === n).length;
     return V(x + (k % 2 ? 1 : -1) * SQ * 0.22, 0, z + (k < 2 ? -1 : 1) * SQ * 0.22);
@@ -432,10 +506,12 @@ export function createWorld(canvas) {
       onHop?.(n);
     }
     if (result.jump) {
-      const thing = (result.jump === 'ladder' ? ladders : snakes).find(o => o.userData.from === result.landed);
-      const curve = thing.userData.curve, up = result.jump === 'ladder';
+      const up = result.jump === 'ladder';
+      const thing = (up ? ladders : snakes).find(o => o.userData.from === result.landed);
+      if (!up) { thing.userData.bite = performance.now() / 1000; await tween(0.35, () => {}); } // the snake bites first
+      const curve = thing.userData.curve;
       await tween(up ? 1.0 : 1.2, t => {
-        const p = curve.getPointAt(up ? ease(t) : t);
+        const p = up ? curve.getPointAt(ease(t)) : curve.getPoint(t);
         m.position.set(p.x, p.y + 0.004, p.z);
         if (!up) m.rotation.z = Math.sin(t * Math.PI * 6) * 0.3;
       });
@@ -467,27 +543,27 @@ export function createWorld(canvas) {
   async function openBook() {
     if (open) return;
     open = true;
-    if (view.mode === 'orbit') tween(1.2, t => { view.pitch += (-0.95 - view.pitch) * t; });
+    if (view.mode === 'orbit') tween(1.2, t => { view.pitch += (-0.4 - view.pitch) * t; });
     // Slide off the shelf, then fly to the table, growing and lying down.
     world.attach(book);
     const p0 = book.position.clone(), q0 = book.quaternion.clone();
     const slide = p0.clone().add(V(0, 0.05, 0.25));
     await tween(0.45, t => book.position.lerpVectors(p0, slide, ease(t)));
     const s0 = book.scale.x;
-    const land = TABLE.clone().add(V(-HALF_W / 2, 0, 0));
+    const land = TABLE.clone().add(V(0, 0, -0.15)); // the spine; the flat half comes toward you from here
     await tween(1.1, t => {
       const e = ease(t);
       book.position.lerpVectors(slide, land, e);
       book.position.y += Math.sin(t * Math.PI) * 0.15;
-      book.quaternion.copy(q0).slerp(new THREE.Quaternion(), e);
+      book.quaternion.copy(q0).slerp(ON_TABLE, e);
       book.scale.setScalar(s0 + (1 - s0) * e);
     });
-    // Open the cover, sliding over so the open book is centred.
+    // Lift the cover until it stands straight up, like opening a laptop.
     book.userData.spine.visible = false;
     const hinge = book.userData.hinge;
-    await tween(1.0, t => { const e = ease(t); hinge.rotation.z = -Math.PI * (1 - e); book.position.x = land.x + (HALF_W / 2) * e; });
-    // Pop-up: the board springs up, then the ladders and snakes, one after another.
-    game.visible = true;
+    await tween(1.0, t => { hinge.rotation.z = -Math.PI + (Math.PI + STAND) * ease(t); });
+    // Pop-up: the board springs out of the page, then the ladders and snakes, one after another.
+    boardHolder.visible = true;
     boardHolder.scale.setScalar(0.001);
     extras.children.forEach(o => o.scale.setScalar(0.001));
     piecesGroup.visible = false; die.visible = false;
@@ -506,10 +582,10 @@ export function createWorld(canvas) {
     if (!open) return;
     settled = false;
     if (view.mode === 'orbit') tween(1.2, t => { view.pitch += (-0.3 - view.pitch) * t; });
-    book.rotation.y = 0; book.scale.setScalar(1);
-    game.visible = false;
-    const hinge = book.userData.hinge, x0 = book.position.x;
-    await tween(0.8, t => { const e = ease(t); hinge.rotation.z = -Math.PI * e; book.position.x = x0 - (HALF_W / 2) * e; });
+    book.quaternion.copy(ON_TABLE); book.scale.setScalar(1);
+    boardHolder.visible = false; die.visible = false;
+    const hinge = book.userData.hinge;
+    await tween(0.8, t => { hinge.rotation.z = STAND + (-Math.PI - STAND) * ease(t); });
     const p0 = book.position.clone(), s0 = book.scale.x;
     const target = world.worldToLocal(shelfSpot.getWorldPosition(V())).add(V(0, (BOOK_H / 2) * BOOK_ON_SHELF, 0));
     const qShelf = shelfQuat.clone(); // the bookcase stands straight in the world
@@ -517,7 +593,7 @@ export function createWorld(canvas) {
       const e = ease(t);
       book.position.lerpVectors(p0, target, e);
       book.position.y += Math.sin(t * Math.PI) * 0.12;
-      book.quaternion.copy(new THREE.Quaternion()).slerp(qShelf, e);
+      book.quaternion.copy(ON_TABLE).slerp(qShelf, e);
       book.scale.setScalar(s0 + (BOOK_ON_SHELF - s0) * e);
     });
     shelfSpot.attach(book);
@@ -590,10 +666,10 @@ export function createWorld(canvas) {
     // The bookcase book glows until it's picked; snakes flick their tongues.
     if (!open) book.traverse(o => { if (o.isMesh && o.material.emissive) o.material.emissive.setRGB(0.15 + 0.15 * Math.sin(now / 250), 0.12 + 0.12 * Math.sin(now / 250), 0); });
     else book.traverse(o => { if (o.isMesh && o.material.emissive) o.material.emissive.setRGB(0, 0, 0); });
-    snakes.forEach((s, i) => { s.userData.tongue.scale.z = 0.6 + 0.4 * Math.abs(Math.sin(now / 160 + i)); });
+    if (open) snakes.forEach(s => slither(s, now / 1000));
 
     // Turntable spin and zoom (drag and pinch) move the book's spot.
-    const focus = open ? TABLE : SHELF;
+    const focus = open ? BOARD_VIEW : SHELF;
     world.updateMatrixWorld();
     if (view.mode === 'orbit') {
       const target = focus.clone().applyMatrix4(world.matrixWorld);
@@ -603,7 +679,7 @@ export function createWorld(canvas) {
       camera.lookAt(target);
     }
     if (settled) {
-      book.rotation.y = view.spin;
+      book.rotation.set(0, -Math.PI / 2 + view.spin, 0);
       book.scale.setScalar(view.mode === 'phone' ? view.zoom : 1); // with the phone, pinching makes the book bigger
     }
     renderer.render(scene, camera);

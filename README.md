@@ -11,7 +11,7 @@ It works in Safari on iPhone and in Chrome on Android and computers. The camera 
 
 ## 🐍 Snakes & Ladders pop-up book (`snakes.html`)
 
-A 3D bookcase appears in your room through the back camera, held in place by the phone's motion sensors as you look around. Tap the glowing green **Snakes & Ladders** book: it slides off the shelf, flies to you and opens like a pop-up book. The board springs up, and the snakes and ladders rise out of it.
+A 3D bookcase appears in your room through the back camera, held in place by the phone's motion sensors as you look around. Tap the glowing green **Snakes & Ladders** book: it slides off the shelf, flies to you and opens like a laptop. The near half lies flat with the dice on it; the far half stands up, and the board pops out of it, facing you. Then the ladders and snakes rise out of the board. The snakes slither all the time (a wave runs down each body, heads sway, tongues flick), and a snake lunges to bite a piece that lands on its head before it slides down.
 
 - **2–4 players**, each a person or the computer, with names you can change.
 - **Roll** with the 🎲 button, by tapping the die, or by **shaking the phone**.
