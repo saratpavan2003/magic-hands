@@ -1,17 +1,21 @@
-// Magic Hands page (/magic): camera, hand tracking and the magic effects.
+// Magic Hands: camera, hand and body tracking, and the magic effects.
 // The camera picture is looked at on this device only. Nothing is recorded, saved or sent:
-// the hand-tracking engine and model are served from this site and run in the browser.
+// the tracking engine and models are served from this site and run in the browser.
 import { MAGIC } from './words.js';
 import { TIPS, handShape, palmCenter, handSize, coverMap, ease, newFire, fireStep, popped } from './magic.js';
+import { bodyFrom, newBow, bowStep, aim, hitPoints, MIN_POWER } from './archery.js';
 
 const $ = s => document.querySelector(s);
 const ENGINE = { wasmLoaderPath: './vendor/wasm/vision_wasm_internal.js', wasmBinaryPath: './vendor/wasm/vision_wasm_internal.wasm' };
-const MODEL = './model/hand_landmarker.task';
+const MODELS = { hand: './model/hand_landmarker.task', pose: './model/pose_landmarker_lite.task' };
+/** Archery follows the whole body; the other magic follows hands. */
+const trackerFor = m => (m === 'archery' ? 'pose' : 'hand');
 const MAX_PARTICLES = 700;
 
 let stage, video, canvas, ctx, hintEl, scoreEl, flipBtn;
 let W = 0, H = 0;
-let mode = 'wand', facing = 'user', stream = null, tracker = null, trackerLoading = null;
+let mode = 'wand', facing = 'user', stream = null;
+const trackers = { hand: null, pose: null }, trackerLoading = {};
 let running = false, useCamera = false, raf = 0, last = 0, lastVideoTime = -1, lastSeen = 0;
 let sound = true, score = 0, flash = 0, flashColor = '255,190,90';
 let hintText = '', hintUntil = 0, loadingMsg = '';
@@ -21,6 +25,10 @@ const taps = [];   // where the screen was tapped since the last frame
 /** Hands we're following, by id: { present, palm, tip, tips, size, shape, vel, sizeRate, t, lost, trail, fire } */
 const hands = new Map();
 const particles = [], shots = [], bubbles = [];
+
+// Archery: the bow, arrows in the air, things to hit, the body we can see, and the finger slingshot.
+let bow = newBow(), body = null, sling = null;
+const arrows = [], targets = [];
 
 // ---------- Sounds (made on the spot, no sound files) ----------
 let ac = null, noiseBuf = null;
@@ -63,6 +71,8 @@ const SFX = {
   boom: () => { hiss(0.8, 1500, 60, 0.6, 0.7); tone(140, 35, 0.6, 'sine', 0.45); },
   pop: () => tone(650 + Math.random() * 300, 160, 0.12, 'sine', 0.25),
   fizzle: () => hiss(0.5, 4000, 7000, 0.15, 0.8),
+  twang: () => { tone(260, 120, 0.3, 'triangle', 0.3); hiss(0.25, 800, 3000, 0.2, 2); },
+  thunk: () => { tone(200, 70, 0.15, 'square', 0.12); hiss(0.1, 1500, 400, 0.3, 1); },
 };
 
 // ---------- Opening and closing ----------
@@ -82,15 +92,23 @@ async function open(withCamera) {
   loadingMsg = MAGIC.loading;
   try { await startCamera(); }
   catch (e) { loadingMsg = ''; say(MAGIC.noCamera, 7000); return; }
-  try { await loadTracker(); }
-  catch (e) { loadingMsg = ''; say(MAGIC.oldPhone, 7000); return; }
+  useCamera = true;
+  flipBtn.hidden = false;
+  await ensureTracker();
+}
+
+/** Loads the tracker the current magic needs (hands or body), showing "Waking up the magic…" meanwhile. */
+async function ensureTracker() {
+  const kind = trackerFor(mode);
+  if (!useCamera || trackers[kind]) return;
+  loadingMsg = MAGIC.loading;
+  try { await loadTracker(kind); }
+  catch (e) { loadingMsg = ''; useCamera = false; flipBtn.hidden = true; stopCamera(); say(MAGIC.oldPhone, 7000); return; }
   loadingMsg = '';
   if (!running) return;
-  useCamera = true;
-  stage.dataset.tracking = tracker.__delegate || 'on';
-  flipBtn.hidden = false;
+  stage.dataset.tracking = trackers[kind].__delegate;
   lastSeen = performance.now();
-  say(modeHint());
+  if (trackerFor(mode) === kind) say(modeHint());
 }
 
 function close() {
@@ -100,7 +118,8 @@ function close() {
   stage.hidden = true;
   document.body.classList.remove('mg-open');
   hands.clear(); particles.length = 0; shots.length = 0; bubbles.length = 0; taps.length = 0;
-  pointer = null; loadingMsg = '';
+  arrows.length = 0; targets.length = 0; bow = newBow(); body = null; sling = null;
+  pointer = null; loadingMsg = ''; useCamera = false;
   $('#mg-start').focus();
 }
 
@@ -121,19 +140,25 @@ function stopCamera() {
   video.srcObject = null;
 }
 
-function loadTracker() {
-  trackerLoading ||= (async () => {
-    const { HandLandmarker } = await import('../vendor/vision_bundle.mjs');
+/** Starts a tracker once: 'hand' (21 points per hand, up to 2 hands) or 'pose' (33 body points, 1 person). */
+function loadTracker(kind) {
+  trackerLoading[kind] ||= (async () => {
+    const vision = await import('../vendor/vision_bundle.mjs');
+    const Task = kind === 'pose' ? vision.PoseLandmarker : vision.HandLandmarker;
     const opts = delegate => ({
-      baseOptions: { modelAssetPath: MODEL, delegate },
-      runningMode: 'VIDEO', numHands: 2,
-      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+      baseOptions: { modelAssetPath: MODELS[kind], delegate },
+      runningMode: 'VIDEO',
+      ...(kind === 'pose'
+        ? { numPoses: 1, minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5 }
+        : { numHands: 2, minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 }),
     });
-    try { tracker = await HandLandmarker.createFromOptions(ENGINE, opts('GPU')); tracker.__delegate = 'gpu'; }
-    catch (e) { tracker = await HandLandmarker.createFromOptions(ENGINE, opts('CPU')); tracker.__delegate = 'cpu'; }
-    return tracker;
-  })().catch(e => { trackerLoading = null; throw e; });
-  return trackerLoading;
+    let t;
+    try { t = await Task.createFromOptions(ENGINE, opts('GPU')); t.__delegate = 'gpu'; }
+    catch (e) { t = await Task.createFromOptions(ENGINE, opts('CPU')); t.__delegate = 'cpu'; }
+    trackers[kind] = t;
+    return t;
+  })().catch(e => { trackerLoading[kind] = null; throw e; });
+  return trackerLoading[kind];
 }
 
 function resize() {
@@ -146,17 +171,22 @@ function resize() {
 
 // ---------- Modes and messages ----------
 const modeInfo = () => MAGIC.modes.find(m => m.id === mode);
-const modeHint = () => `${modeInfo().emoji} ${modeInfo().how}`;
+const modeHint = () => `${modeInfo().emoji} ${(!useCamera && modeInfo().touch) || modeInfo().how}`;
 function say(text, ms = 4500) { hintText = text; hintUntil = performance.now() + ms; }
+
+const SCORE_ICON = { bubbles: '🫧', archery: '🎯' };
+function setScore(n) { score = n; scoreEl.textContent = `${SCORE_ICON[mode] || ''} ${score}`; }
 
 function setMode(m) {
   mode = m;
   document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
-  bubbles.length = 0; shots.length = 0;
-  for (const h of hands.values()) { h.trail = []; h.fire = newFire(); }
-  score = 0; scoreEl.textContent = '🫧 0';
-  scoreEl.hidden = m !== 'bubbles';
+  bubbles.length = 0; shots.length = 0; arrows.length = 0; targets.length = 0;
+  bow = newBow(); body = null; sling = null; hands.clear();
+  setScore(0);
+  scoreEl.hidden = !SCORE_ICON[m];
+  lastSeen = performance.now();
   say(modeHint());
+  if (running) ensureTracker();
 }
 
 // ---------- Reading hands ----------
@@ -177,6 +207,7 @@ function ingest(id, d, now) {
 }
 
 function readHands(now) {
+  const tracker = trackers.hand;
   if (useCamera && tracker && video.readyState >= 2 && video.videoWidth && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     let res = null;
@@ -312,12 +343,94 @@ function bubbleStep(dt) {
   if (hit.length) scoreEl.textContent = `🫧 ${score}`;
 }
 
+// ---------- Archery ----------
+/** Reads the body from the camera (when there's a new video frame) and smooths its points. */
+function readBody(now) {
+  const tracker = trackers.pose;
+  if (!useCamera || !tracker || video.readyState < 2 || !video.videoWidth || video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  let res = null;
+  try { res = tracker.detectForVideo(video, now); } catch (e) { return; }
+  const lm = res?.landmarks?.[0];
+  if (!lm || (lm[11].visibility ?? 1) < 0.5 || (lm[12].visibility ?? 1) < 0.5) { body = null; return; }
+  const map = coverMap(video.videoWidth, video.videoHeight, W, H, facing === 'user');
+  const next = bodyFrom(lm.map(map));
+  if (next && body) for (const k of Object.keys(next)) if (k !== 'sw') next[k] = ease(body[k], next[k], 0.6);
+  body = next;
+}
+
+function archery(now, dt) {
+  readBody(now);
+  const shot = bowStep(bow, body, dt);
+  if (shot) shoot(shot.from, shot.dir, shot.power);
+
+  // Finger slingshot: press, drag back, let go.
+  if (pointer?.down) {
+    sling ||= { x: pointer.x, y: pointer.y };
+    sling.cur = { x: pointer.x, y: pointer.y };
+  } else if (sling) {
+    const pull = sling.cur ? Math.hypot(sling.x - sling.cur.x, sling.y - sling.cur.y) : 0;
+    const power = Math.min(1, pull / (Math.min(W, H) * 0.35));
+    if (power >= MIN_POWER) shoot({ x: sling.x, y: sling.y }, aim(sling.cur, sling, sling), power);
+    sling = null;
+  }
+
+  // Keep three things to hit on the screen.
+  const R = Math.min(W, H) * 0.085;
+  while (targets.length < 3) {
+    const balloon = Math.random() < 0.4, r = balloon ? R * 0.8 : R;
+    targets.push({ kind: balloon ? 'balloon' : 'target', r, x: rnd(r + 10, W - r - 10), y0: rnd(90 + r, H * 0.62), y: 0, t: rnd(0, 6), hue: rnd(0, 360), fade: 0 });
+  }
+  for (const t of targets) { t.t += dt; t.y = t.y0 + Math.sin(t.t * 1.3) * R * 0.35; t.fade = Math.min(1, t.fade + dt * 3); }
+
+  // Arrows fly in an arc and hit things.
+  const g = H * 0.45;
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    a.vy += g * dt; a.x += a.vx * dt; a.y += a.vy * dt;
+    if (Math.random() < 0.6) add({ x: a.x, y: a.y, vx: rnd(-20, 20), vy: rnd(-20, 20), life: 0.35, size: 2.5, color: `hsl(${rnd(40, 60)},100%,70%)`, drag: 3 });
+    let hit = false;
+    for (let k = targets.length - 1; k >= 0; k--) {
+      const t = targets[k];
+      const pts = hitPoints(a, t);
+      if (!pts) continue;
+      targets.splice(k, 1);
+      hitBurst(t, pts);
+      setScore(score + pts);
+      hit = true;
+      break;
+    }
+    if (hit || a.x < -50 || a.x > W + 50 || a.y > H + 50 || a.y < -H) arrows.splice(i, 1);
+  }
+}
+
+function shoot(from, dir, power) {
+  const speed = Math.min(W, H) * (1.8 + 2.4 * power);
+  arrows.push({ x: from.x, y: from.y, vx: dir.x * speed, vy: dir.y * speed });
+  SFX.twang();
+  stage.dataset.arrows = String(+(stage.dataset.arrows || 0) + 1);
+}
+
+function hitBurst(t, pts) {
+  const n = t.kind === 'balloon' ? 24 : 36;
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, Math.PI * 2), s = rnd(80, 380);
+    const color = t.kind === 'balloon' ? `hsl(${t.hue},90%,65%)` : `hsl(${[0, 45, 200][i % 3]},100%,65%)`;
+    add({ x: t.x, y: t.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.5, 1), size: rnd(3, 7), color, kind: i % 4 ? 'spark' : 'star', drag: 2.5, grav: 200 });
+  }
+  labels.push({ x: t.x, y: t.y, text: pts === 10 ? '🎯 +10!' : `+${pts}`, life: 1 });
+  if (t.kind === 'balloon') SFX.pop(); else { SFX.thunk(); if (pts === 10) SFX.ting(); }
+  stage.dataset.hits = String(+(stage.dataset.hits || 0) + 1);
+}
+const labels = []; // "+10" words that float up after a hit
+
 // ---------- The main loop ----------
 function loop(now) {
   if (!running) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  readHands(now);
+  if (mode === 'archery') archery(now, dt);
+  else readHands(now);
 
   for (const [id, h] of hands) {
     if (!h.present) h.lost += dt;
@@ -338,12 +451,13 @@ function loop(now) {
     p.x += p.vx * dt; p.y += p.vy * dt;
   }
   flash = Math.max(0, flash - dt * 2.5);
+  for (let i = labels.length - 1; i >= 0; i--) { labels[i].life -= dt; labels[i].y -= 60 * dt; if (labels[i].life <= 0) labels.splice(i, 1); }
 
   // Message at the bottom
   let text = loadingMsg;
   if (!text && useCamera) {
-    if ([...hands.values()].some(h => h.present)) lastSeen = now;
-    if (now - lastSeen > 1500) text = MAGIC.showHand;
+    if (mode === 'archery' ? body : [...hands.values()].some(h => h.present)) lastSeen = now;
+    if (now - lastSeen > 1500) text = mode === 'archery' ? MAGIC.showBody : MAGIC.showHand;
   }
   if (!text && now < hintUntil) text = hintText;
   if (hintEl.textContent !== text) hintEl.textContent = text;
@@ -351,6 +465,8 @@ function loop(now) {
   // What the page sees, for tests and curious grown-ups: <div id="mg-stage" data-hands="open point">
   const seen = [...hands.values()].filter(h => h.present).map(h => h.shape).join(' ');
   if (stage.dataset.hands !== seen) stage.dataset.hands = seen;
+  const bowState = bow.drawn ? 'drawn' : bow.side ? 'ready' : body ? 'body' : '';
+  if (stage.dataset.bow !== bowState) stage.dataset.bow = bowState;
 
   draw(now);
   raf = requestAnimationFrame(loop);
@@ -375,6 +491,110 @@ function drawStar(x, y, s) {
     ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
   }
   ctx.closePath(); ctx.fill();
+}
+
+// Archery drawing: targets and balloons, the body we see, the bow, the aim and flying arrows.
+function drawTarget(t) {
+  ctx.globalAlpha = t.fade;
+  if (t.kind === 'balloon') {
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(t.x, t.y + t.r * 1.15); ctx.quadraticCurveTo(t.x + 8, t.y + t.r * 1.6, t.x, t.y + t.r * 2.1); ctx.stroke();
+    const g = ctx.createRadialGradient(t.x - t.r * 0.35, t.y - t.r * 0.4, t.r * 0.1, t.x, t.y, t.r * 1.15);
+    g.addColorStop(0, `hsl(${t.hue},100%,85%)`); g.addColorStop(1, `hsl(${t.hue},85%,50%)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(t.x, t.y, t.r * 0.9, t.r * 1.15, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    [['#ffffff', 1], ['#e63946', 0.82], ['#ffffff', 0.64], ['#1d8fe1', 0.47], ['#ffcc29', 0.3]].forEach(([c, k]) => {
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(t.x, t.y, t.r * k, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.strokeStyle = '#1d2b53'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawArrow(x, y, dx, dy, len, glow) {
+  const tx = x - dx * len, ty = y - dy * len;
+  ctx.lineCap = 'round';
+  if (glow) { ctx.strokeStyle = `rgba(255,220,120,${glow})`; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke(); }
+  ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke();
+  const nx = -dy, ny = dx, h = Math.max(8, len * 0.16);
+  ctx.fillStyle = '#e8eef5';
+  ctx.beginPath(); ctx.moveTo(x + dx * h, y + dy * h); ctx.lineTo(x + nx * h * 0.55, y + ny * h * 0.55); ctx.lineTo(x - nx * h * 0.55, y - ny * h * 0.55); ctx.fill();
+  ctx.fillStyle = '#ff6b9d';
+  for (const sgn of [1, -1]) {
+    ctx.beginPath(); ctx.moveTo(tx + dx * h, ty + dy * h); ctx.lineTo(tx + nx * h * 0.6 * sgn, ty + ny * h * 0.6 * sgn); ctx.lineTo(tx, ty); ctx.fill();
+  }
+}
+
+/** The bow at `at`, facing `dir`, with the string pulled to `hand` (or straight when hand is null). */
+function drawBow(at, dir, size, hand, power) {
+  const nx = -dir.y, ny = dir.x, half = size / 2;
+  const a = { x: at.x + nx * half - dir.x * size * 0.18, y: at.y + ny * half - dir.y * size * 0.18 };
+  const b = { x: at.x - nx * half - dir.x * size * 0.18, y: at.y - ny * half - dir.y * size * 0.18 };
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,215,120,.45)'; ctx.lineWidth = 14;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(at.x + dir.x * size * 0.45, at.y + dir.y * size * 0.45, b.x, b.y); ctx.stroke();
+  ctx.strokeStyle = '#a0522d'; ctx.lineWidth = 7;
+  ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y);
+  if (hand) ctx.lineTo(hand.x, hand.y);
+  ctx.lineTo(b.x, b.y); ctx.stroke();
+  if (hand) {
+    const len = Math.hypot(at.x - hand.x, at.y - hand.y) + size * 0.35;
+    drawArrow(hand.x + dir.x * len, hand.y + dir.y * len, dir.x, dir.y, len, power >= MIN_POWER ? 0.25 + 0.5 * power : 0);
+    if (power >= MIN_POWER) drawAim(at, dir, power);
+  }
+}
+
+/** Dotted line showing where the arrow will fly. */
+function drawAim(from, dir, power) {
+  const speed = Math.min(W, H) * (1.8 + 2.4 * power), g = H * 0.45;
+  let x = from.x, y = from.y, vx = dir.x * speed, vy = dir.y * speed;
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  for (let i = 0; i < 14; i++) {
+    const st = 0.035;
+    vy += g * st; x += vx * st; y += vy * st;
+    ctx.globalAlpha = 0.8 * (1 - i / 14);
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawArchery() {
+  ctx.globalCompositeOperation = 'source-over';
+  for (const t of targets) drawTarget(t);
+
+  if (body) {
+    // Soft lines on the arms, so kids can see the camera found them.
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(body.lw.x, body.lw.y); ctx.lineTo(body.le.x, body.le.y); ctx.lineTo(body.ls.x, body.ls.y);
+    ctx.lineTo(body.rs.x, body.rs.y); ctx.lineTo(body.re.x, body.re.y); ctx.lineTo(body.rw.x, body.rw.y);
+    ctx.stroke();
+    if (bow.side) {
+      const s = body[bow.side + 's'];
+      const dir = bow.drawn ? aim(bow.hand, bow.bow, body.nose) : aim(s, bow.bow, s);
+      drawBow(bow.bow, dir, body.sw * 1.1, bow.drawn ? bow.hand : null, bow.power);
+    }
+  }
+  if (sling?.cur) {
+    const pull = Math.hypot(sling.x - sling.cur.x, sling.y - sling.cur.y);
+    const power = Math.min(1, pull / (Math.min(W, H) * 0.35));
+    drawBow(sling, aim(sling.cur, sling, { x: sling.x, y: sling.y + 1 }), Math.min(W, H) * 0.3, pull > 4 ? sling.cur : null, power);
+  }
+  for (const a of arrows) { const v = Math.hypot(a.vx, a.vy) || 1; drawArrow(a.x, a.y, a.vx / v, a.vy / v, Math.min(W, H) * 0.14, 0.3); }
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `800 ${Math.round(Math.min(W, H) * 0.075)}px Fredoka, Nunito, system-ui, sans-serif`;
+  for (const l of labels) {
+    ctx.globalAlpha = Math.min(1, l.life * 2);
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(l.text, l.x, l.y);
+    ctx.fillStyle = '#ffcc29'; ctx.fillText(l.text, l.x, l.y);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function draw(now) {
@@ -425,6 +645,7 @@ function draw(now) {
     ctx.fillStyle = `rgba(${p.color},${0.35 * (p.life / p.max)})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1.6 - p.life / p.max * 0.6), 0, Math.PI * 2); ctx.fill();
   }
+  if (mode === 'archery') drawArchery();
   if (flash > 0) { ctx.fillStyle = `rgba(${flashColor},${flash * 0.6})`; ctx.fillRect(0, 0, W, H); }
 }
 
