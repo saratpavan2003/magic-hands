@@ -7,6 +7,11 @@
 <meta name="description" content="Wave your hands in front of the camera to draw sparkles in the air, throw fireballs and pop bubbles. The camera picture stays on your device.">
 <meta name="theme-color" content="#2b1d5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Magic Hands">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪄</text></svg>">
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -44,6 +49,7 @@
   <div class="mg-top">
     <button class="mg-round" id="mg-close" type="button" aria-label="Close the magic">✕</button>
     <span class="mg-pill" id="mg-score" aria-live="polite" hidden>🫧 0</span>
+    <button class="mg-round" id="mg-fit" type="button" aria-label="Show the whole camera picture" hidden>⤢</button>
     <button class="mg-round" id="mg-sound" type="button" aria-label="Sound" aria-pressed="true">🔊</button>
     <button class="mg-round" id="mg-flip" type="button" aria-label="Switch camera" hidden>🔄</button>
   </div>

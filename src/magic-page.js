@@ -2,7 +2,7 @@
 // The camera picture is looked at on this device only. Nothing is recorded, saved or sent:
 // the tracking engine and models are served from this site and run in the browser.
 import { MAGIC } from './words.js';
-import { TIPS, handShape, palmCenter, handSize, coverMap, ease, newFire, fireStep, popped } from './magic.js';
+import { TIPS, handShape, palmCenter, handSize, videoRect, videoMap, ease, newFire, fireStep, popped } from './magic.js';
 import { bodyFrom, newBow, bowStep, aim, atCamera, hitPoints, MIN_POWER } from './archery.js';
 
 const $ = s => document.querySelector(s);
@@ -20,6 +20,7 @@ let running = false, useCamera = false, raf = 0, last = 0, lastVideoTime = -1, l
 let sound = true, score = 0, flash = 0, flashColor = '255,190,90';
 let hintText = '', hintUntil = 0, loadingMsg = '';
 let pointer = null; // finger or mouse on the screen: { x, y, down }
+let fit = 'fill';   // camera picture: 'fill' the screen, or 'fit' all of it on screen (remembered on this device)
 const taps = [];   // where the screen was tapped since the last frame
 
 /** Hands we're following, by id: { present, palm, tip, tips, size, shape, vel, sizeRate, t, lost, trail, fire } */
@@ -86,7 +87,7 @@ async function open(withCamera) {
   last = performance.now();
   raf = requestAnimationFrame(loop);
   $('#mg-close').focus();
-  flipBtn.hidden = true;
+  flipBtn.hidden = true; $('#mg-fit').hidden = true;
   if (!withCamera) { say(MAGIC.touch, 5000); return; }
 
   loadingMsg = MAGIC.loading;
@@ -94,7 +95,7 @@ async function open(withCamera) {
   catch (e) { loadingMsg = ''; say(MAGIC.noCamera, 7000); return; }
   loadingMsg = '';
   useCamera = true;
-  flipBtn.hidden = false;
+  flipBtn.hidden = false; $('#mg-fit').hidden = false;
   await ensureTracker();
 }
 
@@ -213,7 +214,7 @@ function readHands(now) {
     let res = null;
     try { res = tracker.detectForVideo(video, now); } catch (e) { /* skip this frame */ }
     if (res) {
-      const map = coverMap(video.videoWidth, video.videoHeight, W, H, facing === 'user');
+      const map = videoMap(video.videoWidth, video.videoHeight, W, H, facing === 'user', fit);
       const ids = new Set();
       res.landmarks.forEach((lm, i) => {
         let id = res.handedness?.[i]?.[0]?.categoryName || 'Hand';
@@ -353,7 +354,7 @@ function readBody(now) {
   try { res = tracker.detectForVideo(video, now); } catch (e) { return; }
   const lm = res?.landmarks?.[0];
   if (!lm || (lm[11].visibility ?? 1) < 0.5 || (lm[12].visibility ?? 1) < 0.5) { body = null; return; }
-  const map = coverMap(video.videoWidth, video.videoHeight, W, H, facing === 'user');
+  const map = videoMap(video.videoWidth, video.videoHeight, W, H, facing === 'user', fit);
   const next = bodyFrom(lm.map(map));
   if (next && body) for (const k of Object.keys(next)) if (k !== 'sw') next[k] = ease(body[k], next[k], 0.6);
   body = next;
@@ -630,14 +631,14 @@ function drawArchery() {
   ctx.globalAlpha = 1;
 }
 
-/** The camera picture, filling the screen (cropping the edges) and flipped like a mirror for the selfie camera. */
+/** The camera picture, filling the screen or fitting all of it (the ⤢ button), flipped like a mirror for the selfie camera. */
 function drawVideo() {
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!useCamera || !stream || video.readyState < 2 || !vw) return;
-  const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s;
+  const r = videoRect(vw, vh, W, H, fit);
   ctx.save();
   if (facing === 'user') { ctx.translate(W, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  ctx.drawImage(video, r.x, r.y, r.w, r.h);
   ctx.restore();
 }
 
@@ -705,6 +706,20 @@ export function initMagic() {
   $('#mg-touch').onclick = () => open(false);
   $('#mg-close').onclick = close;
   document.querySelectorAll('[data-mode]').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+
+  const fitBtn = $('#mg-fit');
+  const showFit = () => {
+    fitBtn.textContent = fit === 'fill' ? '⤢' : '⤡';
+    fitBtn.setAttribute('aria-label', fit === 'fill' ? 'Show the whole camera picture' : 'Fill the screen');
+  };
+  try { if (localStorage.getItem('magic-hands-fit') === 'fit') fit = 'fit'; } catch (e) { /* storage blocked: use the default */ }
+  showFit();
+  fitBtn.onclick = () => {
+    fit = fit === 'fill' ? 'fit' : 'fill';
+    showFit();
+    say(fit === 'fit' ? MAGIC.fitOn : MAGIC.fitOff, 2500);
+    try { localStorage.setItem('magic-hands-fit', fit); } catch (e) { /* not saved, that's fine */ }
+  };
 
   const soundBtn = $('#mg-sound');
   soundBtn.onclick = () => {

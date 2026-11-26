@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fingersUp, handShape, palmCenter, handSize, coverMap, ease, newFire, fireStep, READY, popped } from '../src/magic.js';
+import { fingersUp, handShape, palmCenter, handSize, videoRect, videoMap, ease, newFire, fireStep, READY, popped } from '../src/magic.js';
 
 // A made-up upright hand in screen pixels: wrist at the bottom, fingers pointing up.
 // up: which fingers (index, middle, ring, pinky) are straight; bent ones curl back toward the palm.
@@ -35,16 +35,29 @@ describe('hand shapes', () => {
   });
 });
 
-describe('coverMap', () => {
+describe('videoMap', () => {
   it('fills a tall phone screen with a wide video, cropping the sides', () => {
-    const map = coverMap(1280, 720, 390, 844, false);
+    const map = videoMap(1280, 720, 390, 844, false);
     expect(map({ x: 0.5, y: 0.5 })).toEqual({ x: 195, y: 422 });
     expect(map({ x: 0, y: 0 }).y).toBe(0);
     expect(map({ x: 0, y: 0 }).x).toBeLessThan(0); // the left edge is off screen
   });
   it('flips left and right for the selfie camera', () => {
-    const map = coverMap(1280, 720, 1280, 720, true);
+    const map = videoMap(1280, 720, 1280, 720, true);
     expect(map({ x: 0.25, y: 0.5 })).toEqual({ x: 960, y: 360 });
+  });
+});
+
+describe('videoRect', () => {
+  const near = (r, want) => Object.entries(want).forEach(([k, v]) => expect(r[k]).toBeCloseTo(v, 3));
+  it('fills a tall screen with a tall video by trimming the sides', () => {
+    near(videoRect(720, 1280, 390, 844, 'fill'), { x: -42.375, y: 0, w: 474.75, h: 844 });
+  });
+  it('or fits the whole picture, with bands above and below', () => {
+    near(videoRect(720, 1280, 390, 844, 'fit'), { x: 0, y: 75.333, w: 390, h: 693.333 });
+  });
+  it('maps points into the fitted picture', () => {
+    near(videoMap(720, 1280, 390, 844, false, 'fit')({ x: 0, y: 1 }), { x: 0, y: 768.667 });
   });
 });
 

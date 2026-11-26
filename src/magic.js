@@ -33,12 +33,20 @@ export function palmCenter(pts) {
 export const handSize = pts => dist(pts[0], pts[9]);
 
 /**
- * Turns camera points (0–1 across the video) into screen pixels, for a video shown with
- * `object-fit: cover` in a W × H box. mirror: the selfie camera is shown flipped, like a mirror.
+ * Where the camera picture goes in a W × H screen: 'fill' covers the whole screen (trimming the
+ * edges), 'fit' shows the whole picture (with empty bands). Returns { x, y, w, h }.
  */
-export function coverMap(vw, vh, W, H, mirror) {
-  const s = Math.max(W / vw, H / vh);
-  const ox = (W - vw * s) / 2, oy = (H - vh * s) / 2;
+export function videoRect(vw, vh, W, H, fit = 'fill') {
+  const s = fit === 'fit' ? Math.min(W / vw, H / vh) : Math.max(W / vw, H / vh);
+  return { x: (W - vw * s) / 2, y: (H - vh * s) / 2, w: vw * s, h: vh * s };
+}
+
+/**
+ * Turns camera points (0–1 across the video) into screen pixels, for the picture placed by
+ * videoRect(). mirror: the selfie camera is shown flipped, like a mirror.
+ */
+export function videoMap(vw, vh, W, H, mirror, fit = 'fill') {
+  const r = videoRect(vw, vh, W, H, fit), s = r.w / vw, ox = r.x, oy = r.y;
   return p => {
     const x = ox + p.x * vw * s;
     return { x: mirror ? W - x : x, y: oy + p.y * vh * s };

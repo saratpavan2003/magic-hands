@@ -7,7 +7,7 @@ Do magic with your hands in front of your phone's camera. No touching!
 - **🫧 Bubble Pop:** pop rising bubbles with your fingertips and keep score.
 - **🏹 Archery:** prop the phone up facing you and step back 2–3 big steps so the camera sees your arms. Raise one arm out to the side and a bow appears in that hand. It stays while that hand is up, wherever you point it, and goes away when you drop it. Pull your other hand back to your chin to draw the string, then move it away to let go. Shooting sideways, a dotted line shows the arrow's arc. Pointing the bow at the phone, a crosshair shows where the arrow will land. Hit targets (10 for the bullseye, 5 and 2 for the rings) and balloons (3). Turning the phone sideways gives more room. With AirPlay Screen Mirroring, the TV becomes the game board.
 
-It works in Safari on iPhone and in Chrome on Android and computers. There's nothing to install. "👆 Use my finger instead" plays the same magic by touching the screen, and takes over if the camera can't start.
+It works in Safari on iPhone and in Chrome on Android and computers. The camera picture fills the screen; tap ⤢ to see the whole picture instead (⤡ fills the screen again). For the biggest view on iPhone, tap Share ⬆️ → **Add to Home Screen** and open Magic Hands from the home screen: it opens full screen, without Safari's bars. There's nothing to install. "👆 Use my finger instead" plays the same magic by touching the screen, and takes over if the camera can't start.
 
 ## Privacy
 
@@ -27,6 +27,7 @@ A plain web page with no build step:
 
 ```
 index.html            The page
+manifest.webmanifest  Lets "Add to Home Screen" open it full screen, with the icons in icons/
 style.css             Colors, buttons, and the full-screen magic stage (the camera picture is drawn on the canvas, so the magic lines up with it)
 src/main.js           Fills in the words and starts the magic
 src/words.js          Every word kids see (change the wording here)
