@@ -3,7 +3,7 @@
 // the tracking engine and models are served from this site and run in the browser.
 import { MAGIC } from './words.js';
 import { TIPS, handShape, palmCenter, handSize, videoRect, videoMap, ease, newFire, fireStep, popped } from './magic.js';
-import { bodyFrom, newBow, bowStep, aim, atCamera, hitPoints, MIN_POWER } from './archery.js';
+import { bodyFrom, newBow, bowStep, quiverStep, quiverSpot, aim, atCamera, hitPoints, MIN_POWER, QUIVER } from './archery.js';
 
 const $ = s => document.querySelector(s);
 const ENGINE = { wasmLoaderPath: './vendor/wasm/vision_wasm_internal.js', wasmBinaryPath: './vendor/wasm/vision_wasm_internal.wasm' };
@@ -12,7 +12,7 @@ const MODELS = { hand: './model/hand_landmarker.task', pose: './model/pose_landm
 const trackerFor = m => (m === 'archery' ? 'pose' : 'hand');
 const MAX_PARTICLES = 700;
 
-let stage, video, canvas, ctx, hintEl, scoreEl, flipBtn;
+let stage, video, canvas, ctx, hintEl, scoreEl, ammoEl, flipBtn;
 let W = 0, H = 0;
 let mode = 'wand', facing = 'user', stream = null;
 const trackers = { hand: null, pose: null }, trackerLoading = {};
@@ -28,7 +28,7 @@ const hands = new Map();
 const particles = [], shots = [], bubbles = [];
 
 // Archery: the bow, arrows in the air, things to hit, the body we can see, and the finger slingshot.
-let bow = newBow(), body = null, sling = null;
+let bow = newBow(), body = null, sling = null, shotsTaken = 0;
 const arrows = [], targets = [];
 
 // ---------- Sounds (made on the spot, no sound files) ----------
@@ -74,6 +74,7 @@ const SFX = {
   fizzle: () => hiss(0.5, 4000, 7000, 0.15, 0.8),
   twang: () => { tone(260, 120, 0.3, 'triangle', 0.3); hiss(0.25, 800, 3000, 0.2, 2); },
   thunk: () => { tone(200, 70, 0.15, 'square', 0.12); hiss(0.1, 1500, 400, 0.3, 1); },
+  grab: () => { hiss(0.18, 2500, 6000, 0.18, 1.2); tone(500, 900, 0.12, 'triangle', 0.08); },
 };
 
 // ---------- Opening and closing ----------
@@ -185,6 +186,8 @@ function setMode(m) {
   bow = newBow(); body = null; sling = null; hands.clear();
   setScore(0);
   scoreEl.hidden = !SCORE_ICON[m];
+  ammoEl.hidden = m !== 'archery';
+  shotsTaken = 0;
   lastSeen = performance.now();
   say(modeHint());
   if (running) ensureTracker();
@@ -363,8 +366,13 @@ function readBody(now) {
 function archery(now, dt) {
   readBody(now);
   const shot = bowStep(bow, body, dt);
-  if (shot?.atCamera) { arrows.push({ into: true, x: shot.from.x, y: shot.from.y, t: 0 }); SFX.twang(); stage.dataset.arrows = String(+(stage.dataset.arrows || 0) + 1); }
+  if (shot?.grab) {
+    SFX.grab();
+    for (let i = 0; i < 12; i++) sparkle(bow.hand.x, bow.hand.y, rnd(30, 60));
+  } else if (shot?.atCamera) { arrows.push({ into: true, x: shot.from.x, y: shot.from.y, t: 0 }); SFX.twang(); stage.dataset.arrows = String(+(stage.dataset.arrows || 0) + 1); }
   else if (shot) shoot(shot.from, shot.dir, shot.power);
+  if (shot && !shot.grab) shotsTaken++;
+  if (quiverStep(bow, dt)) { SFX.ting(); say(MAGIC.coach.full, 2500); }
 
   // Finger slingshot: press, drag back, let go.
   if (pointer?.down) {
@@ -373,7 +381,8 @@ function archery(now, dt) {
   } else if (sling) {
     const pull = sling.cur ? Math.hypot(sling.x - sling.cur.x, sling.y - sling.cur.y) : 0;
     const power = Math.min(1, pull / (Math.min(W, H) * 0.35));
-    if (power >= MIN_POWER) shoot({ x: sling.x, y: sling.y }, aim(sling.cur, sling, sling), power);
+    if (power >= MIN_POWER && bow.quiver > 0) { bow.quiver--; shotsTaken++; shoot({ x: sling.x, y: sling.y }, aim(sling.cur, sling, sling), power); }
+    else if (power >= MIN_POWER) say(MAGIC.coach.empty, 2000);
     sling = null;
   }
 
@@ -438,6 +447,19 @@ function hitBurst(t, pts) {
 }
 const labels = []; // "+10" words that float up after a hit
 
+/** Step-by-step help for the first few arrows (and whenever the quiver is empty). */
+function coach() {
+  const c = MAGIC.coach;
+  if (bow.quiver === 0 && !bow.loaded) return c.empty;
+  if (shotsTaken >= 3) return '';
+  if (!useCamera) return '';
+  if (!body) return '';
+  if (!bow.side) return c.raise;
+  if (!bow.loaded) return c.grab;
+  if (!bow.drawn) return c.pull;
+  return bow.power < MIN_POWER ? c.hold : c.letGo;
+}
+
 // ---------- The main loop ----------
 function loop(now) {
   if (!running) return;
@@ -474,6 +496,11 @@ function loop(now) {
     if (now - lastSeen > 1500) text = mode === 'archery' ? MAGIC.showBody : MAGIC.showHand;
   }
   if (!text && now < hintUntil) text = hintText;
+  if (!text && mode === 'archery') text = coach();
+  if (mode === 'archery') {
+    const a = bow.quiver ? `🏹 ${bow.quiver}` : '🏹 0 ⏳';
+    if (ammoEl.textContent !== a) ammoEl.textContent = a;
+  }
   if (hintEl.textContent !== text) hintEl.textContent = text;
 
   // What the page sees, for tests and curious grown-ups: <div id="mg-stage" data-hands="open point">
@@ -563,6 +590,35 @@ function drawBow(at, dir, size, hand, power) {
   }
 }
 
+/** The quiver behind the shoulder: a leaning tube with an arrow sticking out for each one left. It glows when it's time to grab one. */
+function drawQuiver(q, sw, left, glow) {
+  const len = sw * 0.9, lean = 0.35 * q.out;            // the tube leans out over the shoulder
+  const dx = Math.sin(lean), dy = -Math.cos(lean);     // up the tube
+  const top = { x: q.x + dx * len * 0.5, y: q.y + dy * len * 0.5 }, bot = { x: q.x - dx * len * 0.5, y: q.y - dy * len * 0.5 };
+  for (let i = 0; i < left; i++) {                      // arrows sticking out of the top
+    const off = (i / Math.max(1, QUIVER - 1) - 0.5) * sw * 0.3;
+    const bx = top.x - dy * off, by = top.y + dx * off;
+    const tx = bx + dx * sw * (0.32 + (i % 3) * 0.05), ty = by + dy * sw * (0.32 + (i % 3) * 0.05);
+    ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.fillStyle = i % 2 ? '#ff6b9d' : '#ffcc29';
+    const f = Math.max(6, sw * 0.07);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx - dy * f - dx * f * 1.8, ty + dx * f - dy * f * 1.8); ctx.lineTo(tx + dy * f - dx * f * 1.8, ty - dx * f - dy * f * 1.8); ctx.fill();
+  }
+  if (glow) {
+    const a = 0.35 + 0.25 * Math.sin(performance.now() / 180);
+    ctx.fillStyle = `rgba(255,220,100,${a})`;
+    ctx.beginPath(); ctx.arc(top.x + dx * sw * 0.2, top.y + dy * sw * 0.2, sw * 0.32, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#5a3416'; ctx.lineWidth = sw * 0.24;
+  ctx.beginPath(); ctx.moveTo(bot.x, bot.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+  ctx.strokeStyle = '#a0632c'; ctx.lineWidth = sw * 0.17;
+  ctx.stroke();
+  ctx.strokeStyle = '#ffcc29'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(top.x - dy * sw * 0.1, top.y + dx * sw * 0.1); ctx.lineTo(top.x + dy * sw * 0.1, top.y - dx * sw * 0.1); ctx.stroke();
+}
+
 /** Crosshair where an arrow shot at the camera will land. Brighter as the bow is pulled. */
 function drawCrosshair(at, r, power) {
   ctx.lineCap = 'round';
@@ -603,6 +659,9 @@ function drawArchery() {
     ctx.stroke();
     if (bow.side) {
       const s = body[bow.side + 's'];
+      const drawSide = bow.side === 'l' ? 'r' : 'l';
+      drawQuiver(quiverSpot(body, drawSide), body.sw, bow.quiver, !bow.loaded && bow.quiver > 0);
+      if (bow.loaded && !bow.drawn) drawArrow(bow.hand.x, bow.hand.y - body.sw * 0.45, 0, -1, body.sw * 0.75, 0.35);
       if (bow.drawn && atCamera(bow, body)) drawCrosshair(bow.bow, body.sw * 0.45, bow.power);
       else {
         const dir = bow.drawn ? aim(bow.anchor, bow.bow, body.nose) : aim(s, bow.bow, s);
@@ -698,7 +757,7 @@ function draw(now) {
 // ---------- Setup ----------
 export function initMagic() {
   stage = $('#mg-stage'); video = $('#mg-video'); canvas = $('#mg-canvas');
-  hintEl = $('#mg-hint'); scoreEl = $('#mg-score'); flipBtn = $('#mg-flip');
+  hintEl = $('#mg-hint'); scoreEl = $('#mg-score'); ammoEl = $('#mg-ammo'); flipBtn = $('#mg-flip');
   if (!stage) return;
   ctx = canvas.getContext('2d');
 

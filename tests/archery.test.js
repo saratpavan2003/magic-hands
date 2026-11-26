@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodyFrom, newBow, bowStep, aim, hitPoints, DRAW_TIME, LOST_TIME } from '../src/archery.js';
+import { bodyFrom, newBow, bowStep, quiverStep, quiverSpot, aim, hitPoints, DRAW_TIME, LOST_TIME, QUIVER, REFILL_TIME } from '../src/archery.js';
 
 // A made-up person facing the camera, in screen pixels: shoulders 100 px apart, nose above them.
 // left/right: where each wrist is. Elbows sit halfway between shoulder and wrist.
@@ -20,10 +20,12 @@ const LOW = { x: 240, y: 380 };       // left hand down by the side
 const DOWN = { x: 360, y: 380 };      // right hand down by the side
 const CHIN = { x: 310, y: 165 };      // right hand pulled back to the chin
 const AWAY = { x: 420, y: 200 };      // right hand let go, moved away from the face
+const QUIVER_REACH = { x: 380, y: 110 }; // right hand reaching up over the right shoulder
 
-/** Draws the bow all the way, then lets go. */
+/** Takes an arrow from the quiver, draws the bow all the way, then lets go. */
 function fullShot(st, bowHand, chin = CHIN) {
   bowStep(st, person({ left: bowHand, right: DOWN }), 0.03);
+  bowStep(st, person({ left: bowHand, right: QUIVER_REACH }), 0.03);
   for (let t = 0; t <= DRAW_TIME + 0.05; t += 0.05) bowStep(st, person({ left: bowHand, right: chin }), 0.05);
   return bowStep(st, person({ left: bowHand, right: AWAY }), 0.03);
 }
@@ -94,20 +96,62 @@ describe('the bow', () => {
     expect(shot.from).toEqual({ x: 290, y: 170 });
   });
 
-  it("doesn't shoot after only a tiny pull", () => {
+  it("doesn't shoot after only a tiny pull, and the arrow stays in the hand", () => {
     const st = newBow();
+    bowStep(st, person({ left: OUT, right: QUIVER_REACH }), 0.03);
     bowStep(st, person({ left: OUT, right: CHIN }), 0.03);
     bowStep(st, person({ left: OUT, right: CHIN }), 0.05);
     expect(bowStep(st, person({ left: OUT, right: AWAY }), 0.03)).toBe(null);
+    expect(st.loaded).toBe(true);
   });
 
   it('keeps the bow when the camera loses you for a moment', () => {
     const st = newBow();
+    bowStep(st, person({ left: OUT, right: QUIVER_REACH }), 0.03);
     bowStep(st, person({ left: OUT, right: CHIN }), 0.03);
     bowStep(st, null, LOST_TIME / 2);
     expect(st.side).toBe('l');
     bowStep(st, null, LOST_TIME);
-    expect(st).toMatchObject({ side: null, drawn: false, power: 0 });
+    expect(st).toMatchObject({ side: null, drawn: false, power: 0, loaded: false, quiver: QUIVER }); // the arrow went back
+  });
+});
+
+describe('the quiver', () => {
+  it("can't draw the string without an arrow", () => {
+    const st = newBow();
+    bowStep(st, person({ left: OUT, right: CHIN }), 0.03);
+    expect(st.drawn).toBe(false);
+  });
+
+  it('gives an arrow when the hand reaches up over its shoulder', () => {
+    const st = newBow();
+    bowStep(st, person({ left: OUT, right: DOWN }), 0.03);
+    expect(bowStep(st, person({ left: OUT, right: QUIVER_REACH }), 0.03)).toEqual({ grab: true });
+    expect(st).toMatchObject({ loaded: true, quiver: QUIVER - 1 });
+    expect(bowStep(st, person({ left: OUT, right: QUIVER_REACH }), 0.03)).toBe(null); // one arrow at a time
+    expect(st.quiver).toBe(QUIVER - 1);
+  });
+
+  it("doesn't count the chin as the quiver", () => {
+    const st = newBow();
+    bowStep(st, person({ left: OUT, right: CHIN }), 0.03);
+    expect(st.loaded).toBe(false);
+  });
+
+  it('runs out, then fills up again', () => {
+    const st = newBow();
+    for (let i = 0; i < QUIVER; i++) expect(fullShot(st, OUT)).not.toBe(null);
+    expect(st.quiver).toBe(0);
+    expect(fullShot(st, OUT)).toBe(null); // nothing to grab
+    expect(quiverStep(st, REFILL_TIME / 2)).toBe(false);
+    expect(quiverStep(st, REFILL_TIME / 2)).toBe(true);
+    expect(st.quiver).toBe(QUIVER);
+  });
+
+  it('sits behind the shoulder of the drawing hand', () => {
+    const q = quiverSpot(person({ left: OUT, right: DOWN }), 'r');
+    expect(q.out).toBe(1);
+    expect(q.x).toBeGreaterThan(350);
   });
 });
 
