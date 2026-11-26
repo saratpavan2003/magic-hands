@@ -9,6 +9,18 @@ Do magic with your hands in front of your phone's camera. No touching!
 
 It works in Safari on iPhone and in Chrome on Android and computers. The camera picture fills the screen; tap ⤢ to see the whole picture instead (⤡ fills the screen again). For the biggest view on iPhone, tap Share ⬆️ → **Add to Home Screen** and open Magic Hands from the home screen: it opens full screen, without Safari's bars. There's nothing to install. "👆 Use my finger instead" plays the same magic by touching the screen, and takes over if the camera can't start.
 
+## 🐍 Snakes & Ladders pop-up book (`snakes.html`)
+
+A 3D bookcase appears in your room through the back camera, held in place by the phone's motion sensors as you look around. Tap the glowing green **Snakes & Ladders** book: it slides off the shelf, flies to you and opens like a pop-up book. The board springs up, and the snakes and ladders rise out of it.
+
+- **2–4 players**, each a person or the computer, with names you can change.
+- **Roll** with the 🎲 button, by tapping the die, or by **shaking the phone**.
+- Climb ladders, slide down snakes, land exactly on 100 to win (a roll past it bounces back), and a 6 rolls again.
+- Drag sideways to turn the book, pinch to make it bigger, and 🎯 brings everything back in front of you.
+- "Play without the camera" shows the same game on a plain background, where dragging looks around the book.
+
+The other books on the shelf are "coming soon". The bookcase stays put as you turn the phone, but it doesn't know when you walk around (that needs depth sensing that iPhone browsers don't offer).
+
 ## Privacy
 
 The camera only starts after "Start the magic!", and the browser asks first. Each camera picture is looked at on the device to find the hands (or, in Archery, the arms and shoulders), then thrown away. Nothing is recorded, saved or sent anywhere. Every file, including the hand-tracking engine and model, comes from this site.
@@ -33,6 +45,11 @@ src/main.js           Fills in the words and starts the magic
 src/words.js          Every word kids see (change the wording here)
 src/magic-page.js     Camera, hand tracking, effects, sounds and the main loop
 src/magic.js          Hand shapes and fireball/bubble rules (no page code, tested)
+snakes.html, snakes.css  The Snakes & Ladders page
+src/snakes/game.js    Snakes & Ladders rules: board, moves, snakes, ladders, turns, winning (tested)
+src/snakes/scene.js   The 3D world: bookcase, pop-up book, board, snakes, ladders, pieces, dice
+src/snakes/main.js    Players, camera, motion sensors, shake to roll, turns and the winner screen
+vendor/three/         three.js 0.187 (MIT), for the 3D drawing
 src/archery.js        Archery rules: which arm holds the bow, drawing, letting go, aim, points (tested)
 vendor/               Google's MediaPipe hand-tracking engine (@mediapipe/tasks-vision 0.10.35, Apache-2.0)
 model/                MediaPipe's hand model (21 points per hand) and pose model (33 body points, used by Archery)

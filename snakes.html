@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snakes & Ladders Pop-up Book</title>
+<meta name="description" content="A 3D pop-up book game in your room: pick the book from the bookcase, open it, and play Snakes & Ladders with up to 4 players.">
+<meta name="theme-color" content="#2b1d5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Magic Hands">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐍</text></svg>">
+<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./snakes.css">
+</head>
+<body>
+<main class="wrap" id="sl-setup">
+  <div class="head">
+    <a class="sl-back" href="./">🪄 Magic Hands</a>
+    <h1>🐍 Snakes &amp; Ladders</h1>
+    <p>A pop-up book game that appears in your room!</p>
+  </div>
+
+  <section>
+    <div class="card">
+      <h2 class="sec-title">👥 Who's playing?</h2>
+      <div class="sl-count" role="group" aria-label="Number of players">
+        <button type="button" class="btn alt" data-count="2" aria-pressed="true">2 players</button>
+        <button type="button" class="btn alt" data-count="3" aria-pressed="false">3 players</button>
+        <button type="button" class="btn alt" data-count="4" aria-pressed="false">4 players</button>
+      </div>
+      <ol class="sl-players" id="sl-players"></ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="card mg-start">
+      <button class="btn mg-go" id="sl-ar" type="button">📷 Play in my room</button>
+      <button class="btn alt" id="sl-flat" type="button">🖥️ Play without the camera</button>
+      <p class="mg-safe">🔒 The camera picture stays on your device. Nothing is recorded, saved or sent. Ask a grown-up before you tap “Allow”.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec-title">📖 How it works</h2>
+    <div class="cards">
+      <div class="card"><span class="e">📚</span><h3>Find the book</h3><p>A bookcase appears in your room. Look around with your phone, then tap the glowing green book.</p></div>
+      <div class="card"><span class="e">✨</span><h3>Open it</h3><p>The book flies to you and opens. The board pops up, with snakes and ladders rising out of it.</p></div>
+      <div class="card"><span class="e">🎲</span><h3>Roll!</h3><p>Tap Roll or shake the phone. Climb ladders, slide down snakes, and land exactly on 100 to win. A 6 rolls again!</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec-title">💡 Tips</h2>
+    <div class="card mg-tips"><ul>
+      <li>Point your phone at a table or the floor, so the book looks like it's sitting there.</li>
+      <li>Drag sideways to turn the book around. Pinch to make it bigger.</li>
+      <li>Lost the bookcase? Tap 🎯 to bring it back in front of you.</li>
+    </ul></div>
+  </section>
+</main>
+
+<div class="sl-stage" id="sl-stage" role="dialog" aria-modal="true" aria-label="Snakes and Ladders" hidden>
+  <canvas id="sl-canvas"></canvas>
+  <div class="mg-top">
+    <button class="mg-round" id="sl-close" type="button" aria-label="Close the game">✕</button>
+    <button class="mg-round" id="sl-center" type="button" aria-label="Bring the game in front of me">🎯</button>
+    <button class="mg-round" id="sl-sound" type="button" aria-label="Sound" aria-pressed="true">🔊</button>
+  </div>
+  <div class="sl-turns" id="sl-turns" aria-live="polite"></div>
+  <p class="sl-msg" id="sl-msg" aria-live="polite"></p>
+  <div class="sl-bottom">
+    <button class="btn mg-go" id="sl-open" type="button">📖 Open Snakes &amp; Ladders</button>
+    <button class="btn mg-go sl-roll" id="sl-roll" type="button" hidden>🎲 Roll</button>
+    <p class="sl-shake" id="sl-shake" hidden>or shake the phone</p>
+  </div>
+  <div class="sl-win" id="sl-win" hidden>
+    <div class="card">
+      <p class="sl-trophy">🏆</p>
+      <h2 id="sl-win-text">Red wins!</h2>
+      <button class="btn mg-go" id="sl-again" type="button">🔄 Play again</button>
+      <button class="btn alt" id="sl-shelf" type="button">📚 Back to the bookcase</button>
+    </div>
+  </div>
+  <video id="sl-video" playsinline muted autoplay></video>
+</div>
+
+<script type="module" src="./src/snakes/main.js"></script>
+</body>
+</html>

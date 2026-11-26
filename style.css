@@ -22,6 +22,8 @@ section{margin:18px 0}
 .cards .card .e{font-size:40px;display:block}
 .cards .card h3{margin:6px 0;font-size:20px}
 .cards .card p{font-weight:600;line-height:1.5;margin:0}
+.sl-link{display:flex;gap:14px;align-items:center;text-decoration:none;color:var(--ink);font-weight:700;line-height:1.45;background:#e8f4ff}
+.sl-link .e{font-size:40px;flex:none}
 footer{text-align:center;color:var(--ink2);font-weight:700;font-size:14px;margin-top:30px}
 /* Magic Hands page (/magic). The stage covers the whole screen while the magic is on. */
 
