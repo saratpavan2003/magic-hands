@@ -33,37 +33,56 @@ function canvasTexture(w, h, paint) {
 
 const FONT = '"Fredoka","Nunito",system-ui,-apple-system,sans-serif';
 
+export const JUNGLE_ART = './images/jungle-board.jpg';
+
+/**
+ * The board: a jungle painting (waterfall, river, animals) with the 100 squares drawn over it, see-through
+ * so the jungle shows, with numbers kids can read. Until the painting loads (or if it can't), the squares
+ * are drawn in plain pastel colours.
+ */
 function boardTexture() {
   const PAL = ['#fff3c4', '#ffd6e0', '#d4f1ff', '#dcf7d4', '#ece0ff'];
-  return canvasTexture(1024, 1024, (g, W) => {
+  const paint = (g, W, art) => {
     const s = W / 10;
+    if (art) g.drawImage(art, 0, 0, W, W);
     for (let n = 1; n <= 100; n++) {
       const { row, col } = cell(n);
       const x = col * s, y = (9 - row) * s;
-      g.fillStyle = PAL[(row + col) % PAL.length];
-      g.fillRect(x, y, s, s);
-      g.strokeStyle = 'rgba(29,43,83,.25)'; g.lineWidth = 2;
+      if (art) {
+        g.fillStyle = (row + col) % 2 ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.10)'; // a gentle checkerboard
+        g.fillRect(x, y, s, s);
+        g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2;
+      } else {
+        g.fillStyle = PAL[(row + col) % PAL.length];
+        g.fillRect(x, y, s, s);
+        g.strokeStyle = 'rgba(29,43,83,.25)'; g.lineWidth = 2;
+      }
       g.strokeRect(x + 1, y + 1, s - 2, s - 2);
+      // The number on a little round badge, so it's readable on any part of the picture.
+      g.font = `800 ${s * 0.27}px ${FONT}`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      const bw = Math.max(s * 0.36, g.measureText(String(n)).width + s * 0.14);
+      g.fillStyle = art ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,0)';
+      g.beginPath(); g.roundRect(x + s * 0.06, y + s * 0.06, bw, s * 0.32, s * 0.16); g.fill();
       g.fillStyle = '#1d2b53';
-      g.font = `700 ${s * 0.32}px ${FONT}`;
-      g.textAlign = 'left'; g.textBaseline = 'top';
-      g.fillText(String(n), x + s * 0.08, y + s * 0.06);
+      g.fillText(String(n), x + s * 0.06 + bw / 2, y + s * 0.23);
     }
     // Start and finish
-    const label = (n, text, color) => {
-      const { row, col } = cell(n);
-      g.fillStyle = color;
-      g.font = `800 ${s * 0.2}px ${FONT}`;
-      g.textAlign = 'center'; g.textBaseline = 'bottom';
-      g.fillText(text, col * s + s / 2, (9 - row) * s + s * 0.94);
-    };
-    label(1, 'START', '#e63946');
+    const { row: r1, col: c1 } = cell(1);
+    g.font = `800 ${s * 0.2}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    g.lineWidth = 4; g.strokeStyle = '#fff'; g.strokeText('START', c1 * s + s / 2, (9 - r1) * s + s * 0.94);
+    g.fillStyle = '#e63946'; g.fillText('START', c1 * s + s / 2, (9 - r1) * s + s * 0.94);
     const { row, col } = cell(100);
-    g.font = `${s * 0.55}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('👑', col * s + s / 2, (9 - row) * s + s * 0.6);
-    g.strokeStyle = '#1d2b53'; g.lineWidth = 10;
-    g.strokeRect(5, 5, W - 10, W - 10);
-  });
+    g.font = `${s * 0.55}px ${FONT}`; g.textBaseline = 'middle';
+    g.fillText('👑', col * s + s / 2, (9 - row) * s + s * 0.62);
+    g.strokeStyle = '#3b2a14'; g.lineWidth = 12;
+    g.strokeRect(6, 6, W - 12, W - 12);
+  };
+  const tex = canvasTexture(1024, 1024, (g, W) => paint(g, W, null));
+  const art = new Image();
+  art.onload = () => { paint(tex.image.getContext('2d'), tex.image.width, art); tex.needsUpdate = true; };
+  art.src = JUNGLE_ART;
+  return tex;
 }
 
 function coverTexture() {
@@ -368,7 +387,7 @@ function makeBook() {
   const rc = new THREE.Mesh(new THREE.BoxGeometry(HALF_W, COVER, BOOK_H), coverMat);
   rc.position.set(HALF_W / 2, COVER / 2, 0);
   const rollPage = pageTexture('Roll the dice! 🎲');
-  rollPage.center.set(0.5, 0.5); rollPage.rotation = -Math.PI / 2; // reads the right way up on the flat page
+  rollPage.center.set(0.5, 0.5); rollPage.rotation = Math.PI / 2; // reads the right way up on the flat page
   const rp = new THREE.Mesh(new THREE.BoxGeometry(HALF_W - 0.012, PAGES, BOOK_H - 0.02), [pageSide, pageSide, new THREE.MeshStandardMaterial({ map: rollPage }), pageSide, pageSide, pageSide]);
   rp.position.set(HALF_W / 2, COVER + PAGES / 2, 0);
   right.add(rc, rp);
