@@ -23,7 +23,7 @@ describe('the board', () => {
 
 describe('moving', () => {
   it('steps one square per dice point', () => {
-    expect(move(0, 3)).toEqual({ steps: [1, 2, 3], landed: 3, jump: null, final: 3, won: false });
+    expect(move(0, 3)).toEqual({ steps: [1, 2, 3], landed: 3, jump: null, final: 3, won: false, tooFar: false });
   });
   it('climbs ladders and slides down snakes', () => {
     expect(move(1, 3)).toMatchObject({ landed: 4, jump: 'ladder', final: 25 });
@@ -32,9 +32,19 @@ describe('moving', () => {
   it('wins by landing exactly on 100', () => {
     expect(move(96, 4)).toMatchObject({ final: 100, won: true });
   });
-  it('bounces back from 100 when the roll goes past it', () => {
-    expect(move(97, 5)).toMatchObject({ steps: [98, 99, 100, 99, 98], landed: 98, final: 98, won: false });
-    expect(move(98, 3)).toMatchObject({ landed: 99, jump: 'snake', final: 41 }); // bounced onto the big snake
+  it("doesn't move when the roll would go past 100", () => {
+    expect(move(98, 3)).toEqual({ steps: [], landed: 98, jump: null, final: 98, won: false, tooFar: true });
+    expect(move(95, 6)).toMatchObject({ final: 95, tooFar: true });
+  });
+  it('has no snake right before the finish', () => {
+    for (const n of [98, 99]) expect(move(n - 1, 1).jump).toBe(null);
+  });
+  it('a roll that stays put still passes the turn on', () => {
+    const g = newGame([{}, {}]);
+    g.players[0].pos = 98;
+    expect(play(g, 4)).toMatchObject({ tooFar: true, who: 0 });
+    expect(g.players[0].pos).toBe(98);
+    expect(g.turn).toBe(1);
   });
 });
 

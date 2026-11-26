@@ -2,11 +2,11 @@
 // No page code here, so it's easy to test.
 //
 // Squares are numbered 1–100, starting bottom-left and snaking back and forth row by row.
-// Players start at 0 (beside square 1). Land exactly on 100 to win: a roll that goes past it
-// bounces back. Rolling a 6 gives another turn.
+// Players start at 0 (beside square 1). Land exactly on 100 to win: a roll that would go past it
+// doesn't move the piece. Rolling a 6 gives another turn.
 
 export const LADDERS = { 4: 25, 13: 46, 33: 49, 42: 63, 50: 69, 62: 81, 74: 92 };
-export const SNAKES = { 27: 5, 40: 3, 43: 18, 54: 31, 66: 45, 76: 58, 89: 53, 99: 41 };
+export const SNAKES = { 27: 5, 40: 3, 43: 18, 54: 31, 66: 45, 76: 58, 89: 53, 97: 56 };
 export const MAX_PLAYERS = 4;
 export const MIN_PLAYERS = 2;
 
@@ -26,22 +26,19 @@ export function cell(n) {
 }
 
 /**
- * Where a roll takes a player from `pos`. Returns { steps, landed, jump, final, won }:
- * steps: each square passed through, one per dice point (bouncing back from 100);
- * landed: the square the dice took them to; jump: 'ladder', 'snake' or null; final: where they end up.
+ * Where a roll takes a player from `pos`. Returns { steps, landed, jump, final, won, tooFar }:
+ * steps: each square passed through, one per dice point; landed: the square the dice took them to;
+ * jump: 'ladder', 'snake' or null; final: where they end up. tooFar: the roll would go past 100,
+ * so the piece stays where it is (steps is empty).
  */
 export function move(pos, roll) {
+  if (pos + roll > 100) return { steps: [], landed: pos, jump: null, final: pos, won: false, tooFar: true };
   const steps = [];
-  let at = pos, dir = 1;
-  for (let i = 0; i < roll; i++) {
-    if (at === 100) dir = -1;
-    at += dir;
-    steps.push(at);
-  }
-  const landed = at;
+  for (let at = pos + 1; at <= pos + roll; at++) steps.push(at);
+  const landed = pos + roll;
   const jump = LADDERS[landed] ? 'ladder' : SNAKES[landed] ? 'snake' : null;
   const final = LADDERS[landed] || SNAKES[landed] || landed;
-  return { steps, landed, jump, final, won: final === 100 };
+  return { steps, landed, jump, final, won: final === 100, tooFar: false };
 }
 
 /** A new game. players: [{ name, bot }] (2–4). Each gets a colour and starts at 0. */

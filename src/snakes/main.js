@@ -15,7 +15,7 @@ const SAY = {
   ladder: p => `🪜 ${p.name} climbs a ladder!`,
   snake: p => `🐍 Oh no! ${p.name} slides down a snake!`,
   again: p => `🎲 A 6! ${p.name} rolls again!`,
-  bounce: 'Too far! Bounce back from 100 ↩️',
+  tooFar: (p, need) => `Too far! ${p.name} needs exactly ${need} to reach 100 👑`,
   win: p => `${p.name} wins!`,
 };
 
@@ -236,7 +236,7 @@ async function roll() {
   say(SAY.rolled(value), 1200);
   const who = game.turn, p = game.players[who];
   const result = play(game, value);
-  if (result.steps.includes(100) && result.landed !== 100) setTimeout(() => say(SAY.bounce, 1800), 300);
+  if (result.tooFar) say(SAY.tooFar(p, 100 - p.pos), 2600);
   await world.movePiece(who, result, game.players.map(x => x.pos), () => SFX.hop());
   stage.dataset.rolls = String(+(stage.dataset.rolls || 0) + 1);
   if (result.jump === 'ladder') { SFX.ladder(); say(SAY.ladder(p)); }
@@ -244,7 +244,7 @@ async function roll() {
   busy = false;
   if (result.won) return win(p);
   if (result.again) { say(SAY.again(p)); drawTurns(); if (p.bot) setTimeout(() => { if (running && game && !busy) roll(); }, 1500); return; }
-  setTimeout(() => { if (running && game && !busy) nextTurn(); }, result.jump ? 1600 : 400);
+  setTimeout(() => { if (running && game && !busy) nextTurn(); }, result.jump || result.tooFar ? 1800 : 400);
 }
 
 function win(p) {
