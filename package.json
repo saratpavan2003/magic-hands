@@ -1,0 +1,13 @@
+{
+  "name": "magic-hands",
+  "private": true,
+  "type": "module",
+  "description": "Do magic with your hands in front of the camera. A static web page: no build step.",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
+  }
+}

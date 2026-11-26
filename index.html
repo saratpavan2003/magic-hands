@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Magic Hands</title>
+<meta name="description" content="Wave your hands in front of the camera to draw sparkles in the air, throw fireballs and pop bubbles. The camera picture stays on your device.">
+<meta name="theme-color" content="#2b1d5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪄</text></svg>">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="head">
+    <h1>🪄 Magic Hands</h1>
+    <p>Do magic with your hands. No touching!</p>
+  </div>
+
+  <section>
+    <div class="card mg-start">
+      <button class="btn mg-go" id="mg-start" type="button">📷 Start the magic!</button>
+      <button class="btn alt" id="mg-touch" type="button">👆 Use my finger instead</button>
+      <p class="mg-safe" id="mg-safe"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec-title">🎩 Three Kinds of Magic</h2>
+    <div class="cards" id="mg-cards"></div>
+  </section>
+
+  <section>
+    <h2 class="sec-title">💡 Magic Tips</h2>
+    <div class="card mg-tips"><ul id="mg-tips"></ul></div>
+  </section>
+
+  <footer>Hand tracking by Google's open-source MediaPipe, running on your device.</footer>
+</main>
+
+<div class="mg-stage" id="mg-stage" role="dialog" aria-modal="true" aria-label="Magic Hands" hidden>
+  <video id="mg-video" playsinline muted autoplay></video>
+  <canvas id="mg-canvas" aria-hidden="true"></canvas>
+  <div class="mg-top">
+    <button class="mg-round" id="mg-close" type="button" aria-label="Close the magic">✕</button>
+    <span class="mg-pill" id="mg-score" aria-live="polite" hidden>🫧 0</span>
+    <button class="mg-round" id="mg-sound" type="button" aria-label="Sound" aria-pressed="true">🔊</button>
+    <button class="mg-round" id="mg-flip" type="button" aria-label="Switch camera" hidden>🔄</button>
+  </div>
+  <p class="mg-hint" id="mg-hint" aria-live="polite"></p>
+  <div class="mg-modes" id="mg-modes" role="group" aria-label="Kind of magic"></div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

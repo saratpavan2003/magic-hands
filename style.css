@@ -1,0 +1,60 @@
+/* Magic Hands. Colors, buttons and cards for the start page, then the full-screen stage. */
+:root{
+  --ink:#1d2b53; --ink2:#4a5880; --sun:#ffcc29; --pink:#ff6b9d; --grape:#8c6bff;
+  --bg:#fff8ec; --card:#fff; --r:26px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Nunito",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg);
+  background-image:radial-gradient(#ffe7b8 1.5px,transparent 1.5px);background-size:22px 22px}
+h1,h2,h3,.fred{font-family:"Fredoka","Nunito",system-ui,sans-serif}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:900px;margin:0 auto;padding:0 16px 40px}
+.head{margin:28px 0 14px}
+.head h1{font-size:clamp(36px,9vw,56px);margin:0;line-height:1.05}
+.head p{font-weight:700;color:var(--ink2);margin:6px 0 0;font-size:18px}
+section{margin:18px 0}
+.card{background:var(--card);border:3px solid var(--ink);border-radius:var(--r);padding:18px;box-shadow:0 6px 0 var(--ink)}
+.btn{border:3px solid var(--ink);background:var(--sun);color:var(--ink);border-radius:999px;padding:9px 16px;font-weight:800;box-shadow:0 3px 0 var(--ink);transition:transform .1s}
+.btn:active{transform:translateY(3px);box-shadow:none}
+.btn.alt{background:#fff}
+.sec-title{font-size:26px;margin:0 0 12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.cards .card .e{font-size:40px;display:block}
+.cards .card h3{margin:6px 0;font-size:20px}
+.cards .card p{font-weight:600;line-height:1.5;margin:0}
+footer{text-align:center;color:var(--ink2);font-weight:700;font-size:14px;margin-top:30px}
+/* Magic Hands page (/magic). The stage covers the whole screen while the magic is on. */
+
+.mg-start{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;text-align:center;
+  background:radial-gradient(circle at 30% 20%,#7b4dff,#2b1d5c 70%);color:#fff}
+.mg-go{font-size:22px;padding:14px 26px}
+.mg-safe{flex-basis:100%;margin:4px 0 0;font-weight:700;line-height:1.4}
+.mg-tips ul{margin:0;padding-left:22px;font-weight:700;line-height:1.7}
+
+body.mg-open{overflow:hidden}
+.mg-stage{position:fixed;inset:0;z-index:100;background:radial-gradient(circle at 50% 30%,#2b1d5c,#0b0b1e);overflow:hidden;
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.mg-stage[hidden]{display:none}
+#mg-video,#mg-canvas{position:absolute;inset:0;width:100%;height:100%}
+#mg-video{object-fit:cover}
+.mg-mirror #mg-video{transform:scaleX(-1)}
+
+.mg-top{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;display:flex;gap:10px;align-items:center}
+#mg-close{margin-right:auto}
+.mg-round{flex:none;width:48px;height:48px;border-radius:50%;border:3px solid #fff;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:1;padding:0}
+.mg-round[hidden]{display:none}
+.mg-pill{font-family:"Fredoka","Nunito",system-ui,sans-serif;font-weight:700;font-size:24px;color:var(--ink);background:var(--sun);border:3px solid #fff;border-radius:999px;padding:4px 16px}
+.mg-pill[hidden]{display:none}
+
+.mg-hint{position:absolute;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 100px);margin:0 auto;max-width:560px;
+  text-align:center;color:#fff;font-weight:800;font-size:20px;line-height:1.35;text-shadow:0 2px 6px #000,0 0 2px #000}
+
+.mg-modes{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 14px);display:flex;justify-content:center;gap:8px;padding:0 12px}
+.mg-modes button{flex:1 1 0;max-width:150px;display:flex;flex-direction:column;align-items:center;gap:2px;border:3px solid #fff;border-radius:18px;
+  background:rgba(0,0,0,.45);color:#fff;font-weight:800;font-size:13px;padding:6px 4px}
+.mg-modes button span{font-size:26px;line-height:1.2}
+.mg-modes button[aria-pressed=true]{background:var(--sun);color:var(--ink);border-color:var(--sun)}
+
+.mg-shake{animation:mg-shake .35s}
+@keyframes mg-shake{20%{transform:translate(-6px,3px)}40%{transform:translate(5px,-4px)}60%{transform:translate(-4px,-2px)}80%{transform:translate(3px,2px)}}
+@media (prefers-reduced-motion:reduce){.mg-shake{animation:none}}
