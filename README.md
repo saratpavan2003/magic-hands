@@ -5,7 +5,7 @@ Do magic with your hands in front of your phone's camera. No touching!
 - **✨ Sparkle Wand:** point your finger and draw a rainbow trail in the air. Open your hand wide for a star burst.
 - **🔥 Fireball:** open your hand to grow a fireball. Swing your hand fast to throw it, or push it at the camera. Make a fist to put it out.
 - **🫧 Bubble Pop:** pop rising bubbles with your fingertips and keep score.
-- **🏹 Archery:** prop the phone up and step back 2–3 big steps so the camera sees your arms. Stretch one arm out and a bow appears in that hand. Pull your other hand back to your chin to draw the string (a dotted line shows where the arrow will go), then move it away to let go. Hit targets (10 for the bullseye, 5 and 2 for the rings) and balloons (3). Turning the phone sideways gives more room. With AirPlay Screen Mirroring, the TV becomes the game board.
+- **🏹 Archery:** prop the phone up facing you and step back 2–3 big steps so the camera sees your arms. Raise one arm out to the side and a bow appears in that hand. It stays while that hand is up, wherever you point it, and goes away when you drop it. Pull your other hand back to your chin to draw the string, then move it away to let go. Shooting sideways, a dotted line shows the arrow's arc. Pointing the bow at the phone, a crosshair shows where the arrow will land. Hit targets (10 for the bullseye, 5 and 2 for the rings) and balloons (3). Turning the phone sideways gives more room. With AirPlay Screen Mirroring, the TV becomes the game board.
 
 It works in Safari on iPhone and in Chrome on Android and computers. There's nothing to install. "👆 Use my finger instead" plays the same magic by touching the screen, and takes over if the camera can't start.
 
@@ -27,7 +27,7 @@ A plain web page with no build step:
 
 ```
 index.html            The page
-style.css             Colors, buttons, and the full-screen magic stage
+style.css             Colors, buttons, and the full-screen magic stage (the camera picture is drawn on the canvas, so the magic lines up with it)
 src/main.js           Fills in the words and starts the magic
 src/words.js          Every word kids see (change the wording here)
 src/magic-page.js     Camera, hand tracking, effects, sounds and the main loop

@@ -3,7 +3,7 @@
 // the tracking engine and models are served from this site and run in the browser.
 import { MAGIC } from './words.js';
 import { TIPS, handShape, palmCenter, handSize, coverMap, ease, newFire, fireStep, popped } from './magic.js';
-import { bodyFrom, newBow, bowStep, aim, hitPoints, MIN_POWER } from './archery.js';
+import { bodyFrom, newBow, bowStep, aim, atCamera, hitPoints, MIN_POWER } from './archery.js';
 
 const $ = s => document.querySelector(s);
 const ENGINE = { wasmLoaderPath: './vendor/wasm/vision_wasm_internal.js', wasmBinaryPath: './vendor/wasm/vision_wasm_internal.wasm' };
@@ -92,6 +92,7 @@ async function open(withCamera) {
   loadingMsg = MAGIC.loading;
   try { await startCamera(); }
   catch (e) { loadingMsg = ''; say(MAGIC.noCamera, 7000); return; }
+  loadingMsg = '';
   useCamera = true;
   flipBtn.hidden = false;
   await ensureTracker();
@@ -101,10 +102,9 @@ async function open(withCamera) {
 async function ensureTracker() {
   const kind = trackerFor(mode);
   if (!useCamera || trackers[kind]) return;
-  loadingMsg = MAGIC.loading;
+  loadingMsg = ''; // the loop says "Waking up the magic…" until this tracker is ready
   try { await loadTracker(kind); }
-  catch (e) { loadingMsg = ''; useCamera = false; flipBtn.hidden = true; stopCamera(); say(MAGIC.oldPhone, 7000); return; }
-  loadingMsg = '';
+  catch (e) { useCamera = false; flipBtn.hidden = true; stopCamera(); say(MAGIC.oldPhone, 7000); return; }
   if (!running) return;
   stage.dataset.tracking = trackers[kind].__delegate;
   lastSeen = performance.now();
@@ -362,7 +362,8 @@ function readBody(now) {
 function archery(now, dt) {
   readBody(now);
   const shot = bowStep(bow, body, dt);
-  if (shot) shoot(shot.from, shot.dir, shot.power);
+  if (shot?.atCamera) { arrows.push({ into: true, x: shot.from.x, y: shot.from.y, t: 0 }); SFX.twang(); stage.dataset.arrows = String(+(stage.dataset.arrows || 0) + 1); }
+  else if (shot) shoot(shot.from, shot.dir, shot.power);
 
   // Finger slingshot: press, drag back, let go.
   if (pointer?.down) {
@@ -387,6 +388,16 @@ function archery(now, dt) {
   const g = H * 0.45;
   for (let i = arrows.length - 1; i >= 0; i--) {
     const a = arrows[i];
+    if (a.into) {
+      // Shot at the camera: the arrow flies into the screen for a moment, then lands where the bow pointed.
+      a.t += dt;
+      if (a.t < INTO_TIME) continue;
+      arrows.splice(i, 1);
+      const k = targets.findIndex(t => hitPoints(a, { ...t, r: t.r * 1.4 }));
+      if (k >= 0) { const [t] = targets.splice(k, 1); const pts = hitPoints(a, { ...t, r: t.r * 1.4 }); hitBurst(t, pts); setScore(score + pts); }
+      else for (let j = 0; j < 10; j++) add({ x: a.x, y: a.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.4, size: 3, color: '#ffd23f', drag: 3 });
+      continue;
+    }
     a.vy += g * dt; a.x += a.vx * dt; a.y += a.vy * dt;
     if (Math.random() < 0.6) add({ x: a.x, y: a.y, vx: rnd(-20, 20), vy: rnd(-20, 20), life: 0.35, size: 2.5, color: `hsl(${rnd(40, 60)},100%,70%)`, drag: 3 });
     let hit = false;
@@ -403,6 +414,8 @@ function archery(now, dt) {
     if (hit || a.x < -50 || a.x > W + 50 || a.y > H + 50 || a.y < -H) arrows.splice(i, 1);
   }
 }
+
+const INTO_TIME = 0.3; // seconds an arrow shot at the camera takes to land
 
 function shoot(from, dir, power) {
   const speed = Math.min(W, H) * (1.8 + 2.4 * power);
@@ -454,7 +467,7 @@ function loop(now) {
   for (let i = labels.length - 1; i >= 0; i--) { labels[i].life -= dt; labels[i].y -= 60 * dt; if (labels[i].life <= 0) labels.splice(i, 1); }
 
   // Message at the bottom
-  let text = loadingMsg;
+  let text = loadingMsg || (useCamera && !trackers[trackerFor(mode)] ? MAGIC.loading : '');
   if (!text && useCamera) {
     if (mode === 'archery' ? body : [...hands.values()].some(h => h.present)) lastSeen = now;
     if (now - lastSeen > 1500) text = mode === 'archery' ? MAGIC.showBody : MAGIC.showHand;
@@ -549,6 +562,19 @@ function drawBow(at, dir, size, hand, power) {
   }
 }
 
+/** Crosshair where an arrow shot at the camera will land. Brighter as the bow is pulled. */
+function drawCrosshair(at, r, power) {
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = power >= MIN_POWER ? '#ffcc29' : 'rgba(255,255,255,.8)';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(at.x, at.y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath();
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(at.x + dx * r * 0.5, at.y + dy * r * 0.5); ctx.lineTo(at.x + dx * r * 1.3, at.y + dy * r * 1.3); }
+  ctx.stroke();
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.beginPath(); ctx.arc(at.x, at.y, 4, 0, Math.PI * 2); ctx.fill();
+}
+
 /** Dotted line showing where the arrow will fly. */
 function drawAim(from, dir, power) {
   const speed = Math.min(W, H) * (1.8 + 2.4 * power), g = H * 0.45;
@@ -576,8 +602,11 @@ function drawArchery() {
     ctx.stroke();
     if (bow.side) {
       const s = body[bow.side + 's'];
-      const dir = bow.drawn ? aim(bow.hand, bow.bow, body.nose) : aim(s, bow.bow, s);
-      drawBow(bow.bow, dir, body.sw * 1.1, bow.drawn ? bow.hand : null, bow.power);
+      if (bow.drawn && atCamera(bow, body)) drawCrosshair(bow.bow, body.sw * 0.45, bow.power);
+      else {
+        const dir = bow.drawn ? aim(bow.anchor, bow.bow, body.nose) : aim(s, bow.bow, s);
+        drawBow(bow.bow, dir, body.sw * 1.1, bow.drawn ? bow.hand : null, bow.power);
+      }
     }
   }
   if (sling?.cur) {
@@ -585,7 +614,11 @@ function drawArchery() {
     const power = Math.min(1, pull / (Math.min(W, H) * 0.35));
     drawBow(sling, aim(sling.cur, sling, { x: sling.x, y: sling.y + 1 }), Math.min(W, H) * 0.3, pull > 4 ? sling.cur : null, power);
   }
-  for (const a of arrows) { const v = Math.hypot(a.vx, a.vy) || 1; drawArrow(a.x, a.y, a.vx / v, a.vy / v, Math.min(W, H) * 0.14, 0.3); }
+  for (const a of arrows) {
+    if (a.into) { drawCrosshair(a, Math.min(W, H) * 0.12 * (1 - a.t / INTO_TIME) + 4, 1); continue; }
+    const v = Math.hypot(a.vx, a.vy) || 1;
+    drawArrow(a.x, a.y, a.vx / v, a.vy / v, Math.min(W, H) * 0.14, 0.3);
+  }
 
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = `800 ${Math.round(Math.min(W, H) * 0.075)}px Fredoka, Nunito, system-ui, sans-serif`;
@@ -597,8 +630,20 @@ function drawArchery() {
   ctx.globalAlpha = 1;
 }
 
+/** The camera picture, filling the screen (cropping the edges) and flipped like a mirror for the selfie camera. */
+function drawVideo() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!useCamera || !stream || video.readyState < 2 || !vw) return;
+  const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s;
+  ctx.save();
+  if (facing === 'user') { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  ctx.restore();
+}
+
 function draw(now) {
   ctx.clearRect(0, 0, W, H);
+  drawVideo();
 
   for (const b of bubbles) {
     const g = ctx.createRadialGradient(b.x - b.r * 0.35, b.y - b.r * 0.35, b.r * 0.1, b.x, b.y, b.r);

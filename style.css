@@ -36,8 +36,9 @@ body.mg-open{overflow:hidden}
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .mg-stage[hidden]{display:none}
 #mg-video,#mg-canvas{position:absolute;inset:0;width:100%;height:100%}
-#mg-video{object-fit:cover}
-.mg-mirror #mg-video{transform:scaleX(-1)}
+/* The page draws the camera picture on the canvas itself, so the magic always lines up with it.
+   The video stays full size but invisible: some phones stop updating a hidden or tiny video. */
+#mg-video{object-fit:cover;opacity:0}
 
 .mg-top{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;display:flex;gap:10px;align-items:center}
 #mg-close{margin-right:auto}
