@@ -16,7 +16,7 @@ A 3D bookcase appears in your room through the back camera, held in place by the
 - The board is a jungle: a waterfall and river with a rope bridge, a tiger, an elephant, monkeys, a toucan, a parrot and a frog (`images/jungle-board.jpg`, painted with an AI image generator). The squares and numbers are drawn over it in code, so the picture can be swapped for another one.
 - **2–4 players**, each a person or the computer, with names you can change.
 - **Roll** with the 🎲 button, by tapping the die, or by **shaking the phone**.
-- Climb ladders, slide down snakes, land exactly on 100 to win (a roll that would go past it doesn't move you), and a 6 rolls again.
+- Climb ladders, slide down snakes, land exactly on 100 to win (a roll that would go past it doesn't move you), and a 6 rolls again. When someone reaches 100 they get a medal (🥇 1st, 🥈 2nd…) and the others keep playing until only one is left; then a results screen shows everyone's place.
 - Drag sideways to turn the book, pinch to make it bigger, and 🎯 brings everything back in front of you.
 - "Play without the camera" shows the same game on a plain background, where dragging looks around the book.
 

@@ -1,5 +1,5 @@
 // Snakes & Ladders page: choosing players, the camera and motion sensors, rolling the dice
-// (button, tap or shake), taking turns and the winner screen. The 3D world is in scene.js,
+// (button, tap or shake), taking turns, finishing places and the results screen. The 3D world is in scene.js,
 // the rules in game.js.
 import * as THREE from '../../vendor/three/three.module.js';
 import { COLORS, MAX_PLAYERS, MIN_PLAYERS, newGame, play, rollDice } from './game.js';
@@ -16,8 +16,11 @@ const SAY = {
   snake: p => `🐍 Oh no! ${p.name} slides down a snake!`,
   again: p => `🎲 A 6! ${p.name} rolls again!`,
   tooFar: (p, need) => `Too far! ${p.name} needs exactly ${need} to reach 100 👑`,
-  win: p => `${p.name} wins!`,
+  finished: (p, place, over) => `${MEDAL[place - 1]} ${p.name} finishes ${ORDINAL[place - 1]}!${over ? '' : ' The others play on…'}`,
 };
+
+const MEDAL = ['🥇', '🥈', '🥉', '🏅'];
+const ORDINAL = ['1st', '2nd', '3rd', '4th'];
 
 // ---------- Choosing players ----------
 let count = 2;
@@ -91,12 +94,12 @@ function drawTurns() {
   if (!game) return;
   game.players.forEach((p, i) => {
     const c = document.createElement('span');
-    c.className = 'sl-chip' + (i === game.turn && game.winner === null ? ' now' : '');
+    c.className = 'sl-chip' + (i === game.turn && !game.over ? ' now' : '') + (p.place ? ' done' : '');
     const dot = document.createElement('i'); dot.style.background = p.color;
-    c.append(dot, `${p.bot ? '🤖 ' : ''}${p.name} · ${p.pos || 'start'}`);
+    c.append(dot, `${p.bot ? '🤖 ' : ''}${p.name} · ${p.place ? `${MEDAL[p.place - 1]} ${ORDINAL[p.place - 1]}` : p.pos || 'start'}`);
     box.append(c);
   });
-  const human = game.winner === null && !game.players[game.turn].bot;
+  const human = !game.over && !game.players[game.turn].bot;
   $('#sl-roll').disabled = busy || !human;
 }
 
@@ -216,18 +219,18 @@ function newRound() {
   nextTurn();
 }
 
-const canRoll = () => game && !busy && game.winner === null && !game.players[game.turn].bot && !$('#sl-roll').hidden;
+const canRoll = () => game && !busy && !game.over && !game.players[game.turn].bot && !$('#sl-roll').hidden;
 
 function nextTurn() {
   drawTurns();
-  if (game.winner !== null) return;
+  if (game.over) return;
   const p = game.players[game.turn];
   say(SAY.turn(p, p.bot), p.bot ? 1500 : 0);
   if (p.bot) setTimeout(() => { if (running && game && !busy) roll(); }, 1100);
 }
 
 async function roll() {
-  if (!game || busy || game.winner !== null) return;
+  if (!game || busy || game.over) return;
   busy = true;
   drawTurns();
   const value = rollDice();
@@ -242,19 +245,45 @@ async function roll() {
   if (result.jump === 'ladder') { SFX.ladder(); say(SAY.ladder(p)); }
   if (result.jump === 'snake') { SFX.snake(); say(SAY.snake(p)); }
   busy = false;
-  if (result.won) return win(p);
+  if (result.won) {
+    celebrate(p, result.place, result.over);
+    if (result.over) { setTimeout(() => { if (running && game) results(); }, 2600); return; }
+    setTimeout(() => { if (running && game && !busy) nextTurn(); }, 3000);
+    return;
+  }
   if (result.again) { say(SAY.again(p)); drawTurns(); if (p.bot) setTimeout(() => { if (running && game && !busy) roll(); }, 1500); return; }
   setTimeout(() => { if (running && game && !busy) nextTurn(); }, result.jump || result.tooFar ? 1800 : 400);
 }
 
-function win(p) {
+/** Someone reached 100: fanfare, confetti and their medal. The others keep playing unless the game is over. */
+function celebrate(p, place, over) {
   SFX.win();
   drawTurns();
+  say(SAY.finished(p, place, over), 3000);
+  stage.dataset.finished = String(game.places.length);
+  confetti(place === 1 ? 40 : 20);
+}
+
+/** The game is over: everyone's place, best first. */
+function results() {
   stage.dataset.state = 'won';
-  $('#sl-win-text').textContent = `${p.bot ? '🤖 ' : ''}${SAY.win(p)}`;
-  $('#sl-win').hidden = false;
   $('#sl-roll').hidden = true; $('#sl-shake').hidden = true;
-  for (let i = 0; i < 40; i++) {
+  const list = $('#sl-results');
+  list.textContent = '';
+  game.places.forEach((who, k) => {
+    const p = game.players[who], li = document.createElement('li');
+    const dot = document.createElement('i'); dot.style.background = p.color;
+    li.append(`${MEDAL[k]} `, dot, ` ${p.bot ? '🤖 ' : ''}${p.name}`);
+    list.append(li);
+  });
+  const first = game.players[game.places[0]];
+  $('#sl-win-text').textContent = `${first.name} wins!`;
+  $('#sl-win').hidden = false;
+  say('', 0);
+}
+
+function confetti(n) {
+  for (let i = 0; i < n; i++) {
     const c = document.createElement('span');
     c.className = 'sl-confetti';
     c.textContent = ['🎉', '⭐', '🎊', '✨', '🐍', '🪜'][i % 6];
@@ -321,7 +350,7 @@ function initTouch() {
 function init() {
   stage = $('#sl-stage'); canvas = $('#sl-canvas'); video = $('#sl-video');
   world = createWorld(canvas);
-  if (new URLSearchParams(location.search).has('debug')) window.snakesWorld = world; // for testing
+  if (new URLSearchParams(location.search).has('debug')) { window.snakesWorld = world; window.snakesGame = () => game; } // for testing
   drawSeats();
   document.querySelectorAll('[data-count]').forEach(b => { b.onclick = () => { count = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, +b.dataset.count)); drawSeats(); }; });
   $('#sl-ar').onclick = () => start(true);

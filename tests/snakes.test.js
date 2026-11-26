@@ -54,8 +54,8 @@ describe('a game', () => {
     expect(() => newGame(Array(MAX_PLAYERS + 1).fill({}))).toThrow();
     const g = newGame([{ name: 'Mom' }, { bot: true }]);
     expect(g.players).toEqual([
-      { name: 'Mom', bot: false, color: '#ff4d4d', pos: 0 },
-      { name: 'Blue', bot: true, color: '#3d8bff', pos: 0 },
+      { name: 'Mom', bot: false, color: '#ff4d4d', pos: 0, place: null },
+      { name: 'Blue', bot: true, color: '#3d8bff', pos: 0, place: null },
     ]);
   });
 
@@ -70,13 +70,38 @@ describe('a game', () => {
     expect(g.turn).toBe(0); // back around to the first player
   });
 
-  it('ends when someone reaches 100', () => {
+  it('with 2 players, ends when someone reaches 100', () => {
     const g = newGame([{}, {}]);
     g.players[1].pos = 94;
     g.turn = 1;
-    expect(play(g, 6)).toMatchObject({ won: true, again: false });
-    expect(g.winner).toBe(1);
+    expect(play(g, 6)).toMatchObject({ won: true, again: false, place: 1, over: true });
+    expect(g.places).toEqual([1, 0]);
+    expect(g.players.map(p => p.place)).toEqual([2, 1]);
     expect(() => play(g, 3)).toThrow();
+  });
+
+  it('with more players, the others keep playing for the next places', () => {
+    const g = newGame([{}, {}, {}, {}]);
+    g.players[0].pos = 98;
+    expect(play(g, 2)).toMatchObject({ won: true, place: 1, over: false });
+    expect(g.turn).toBe(1);
+    play(g, 1); play(g, 1); play(g, 1);
+    expect(g.turn).toBe(1); // the finished player is skipped
+    g.players[2].pos = 97;
+    g.turn = 2;
+    expect(play(g, 3)).toMatchObject({ place: 2, over: false });
+    expect(g.turn).toBe(3);
+    g.players[3].pos = 99;
+    expect(play(g, 1)).toMatchObject({ place: 3, over: true }); // only one left: they're last
+    expect(g.places).toEqual([0, 2, 3, 1]);
+    expect(g.players[1].place).toBe(4);
+  });
+
+  it("doesn't give a finished player an extra turn for a 6", () => {
+    const g = newGame([{}, {}, {}]);
+    g.players[0].pos = 94;
+    expect(play(g, 6)).toMatchObject({ won: true, again: false });
+    expect(g.turn).toBe(1);
   });
 
   it('rolls 1 to 6', () => {

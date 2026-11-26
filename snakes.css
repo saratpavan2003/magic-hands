@@ -33,6 +33,10 @@ body.sl-open{overflow:hidden}
 .sl-win[hidden]{display:none}
 .sl-win .card{text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center;max-width:360px}
 .sl-win h2{margin:0;font-size:30px}
+.sl-results{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-weight:800;font-size:20px;text-align:left}
+.sl-results li{display:flex;align-items:center;gap:6px}
+.sl-results i{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);display:inline-block}
+.sl-chip.done{opacity:.85}
 .sl-trophy{font-size:72px;margin:0;line-height:1}
 .sl-confetti{position:absolute;top:-40px;font-size:28px;animation:sl-fall 2.4s linear forwards;pointer-events:none}
 @keyframes sl-fall{to{transform:translateY(110vh) rotate(540deg)}}
